@@ -1,0 +1,107 @@
+# agent_config.yaml
+# ------------------
+# Central configuration for all AlgoDesk agents.
+# Read by main.py and band/room_manager.py at startup.
+#
+# Each agent entry defines:
+#   name        : matches AgentName in message_schema.py exactly
+#   display_name: human-readable label shown in the Band room and frontend
+#   role        : category used by the frontend to color-code agent messages
+#   module      : Python import path to the agent's runner function
+#   runner_fn   : function name inside that module that returns a BandMessage
+#   enabled     : set false to skip an agent without deleting config
+#   run_order   : controls startup sequence (lower = starts first)
+
+room:
+  name: "AlgoCouncil Debate Room"
+  description: >
+    A multi-agent adversarial quant desk where strategy agents propose
+    Indian equity portfolios and review agents challenge, stress-test,
+    and compliance-check each proposal before a final allocation is made.
+  max_rounds: 3          # max challenge/revision cycles before forcing a verdict
+
+agents:
+
+  # ── Strategy Agents (Person 1 — Sujan) ─────────────────────────────────────
+  # These agents run first and post proposals into the Band room.
+
+  - name: momentum_agent
+    display_name: "Momentum Analyst"
+    role: strategy
+    module: agents.momentum_agent
+    runner_fn: run_momentum_agent
+    enabled: true
+    run_order: 1
+    color: "#3B82F6"        # blue — shown in frontend debate timeline
+
+  - name: mean_reversion_agent
+    display_name: "Mean Reversion Analyst"
+    role: strategy
+    module: agents.mean_reversion_agent
+    runner_fn: run_mean_reversion_agent
+    enabled: true
+    run_order: 2
+    color: "#8B5CF6"        # purple
+
+  - name: sentiment_agent
+    display_name: "Sentiment Analyst"
+    role: strategy
+    module: agents.sentiment_agent
+    runner_fn: run_sentiment_agent
+    enabled: true
+    run_order: 3
+    color: "#F59E0B"        # amber
+
+  # ── Review Agents (Person 2 — Teammate) ────────────────────────────────────
+  # These agents run after proposals are posted and add challenges/verdicts.
+
+  - name: stress_test_agent
+    display_name: "Stress Test / Devil's Advocate"
+    role: review
+    module: agents.stress_test_agent
+    runner_fn: run_stress_test_agent
+    enabled: true
+    run_order: 4
+    color: "#EF4444"        # red
+
+  - name: compliance_agent
+    display_name: "SEBI Compliance Officer"
+    role: compliance
+    module: agents.compliance_agent
+    runner_fn: run_compliance_agent
+    enabled: true
+    run_order: 5
+    color: "#10B981"        # green
+
+  - name: portfolio_arbiter
+    display_name: "Portfolio Arbiter"
+    role: arbiter
+    module: agents.portfolio_arbiter
+    runner_fn: run_portfolio_arbiter
+    enabled: true
+    run_order: 6
+    color: "#F97316"        # orange
+
+# ── LLM settings ─────────────────────────────────────────────────────────────
+# CrewAI reads OPENAI_API_KEY / GROQ_API_KEY from .env automatically.
+# Set the model name here so all agents use the same one consistently.
+
+llm:
+  provider: groq               # "openai" or "groq"
+  model: gpt-4o-mini             # cheap, fast, good enough for structured proposals
+  # model: groq/llama-3.3-70b-versatile   # free alternative — uncomment to use Groq
+  temperature: 0.3               # low temperature = more consistent structured output
+  max_tokens: 1500               # enough for a full proposal with rationale
+
+# ── Backtest settings ─────────────────────────────────────────────────────────
+
+backtest:
+  default_period: "6mo"          # period passed to run_backtest()
+  stress_test_enabled: true      # if false, stress_test_agent skips backtest calls
+
+# ── Debate settings ───────────────────────────────────────────────────────────
+
+debate:
+  challenge_severity_threshold: "high"   # only "high" severity blocks a proposal
+  min_proposals_for_arbiter: 1           # arbiter runs even if only 1 proposal survives
+  auto_approve_if_no_challenge: true     # if stress agent finds no issues, skip revision round
