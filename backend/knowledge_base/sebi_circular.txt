@@ -1,0 +1,438 @@
+SEBI CIRCULAR ON ALGORITHMIC TRADING BY RETAIL INVESTORS
+=========================================================
+
+CIRCULAR NO: SEBI/HO/MRD/TPD-1/P/CIR/2025/027
+DATE: February 4, 2025
+SUBJECT: Framework for Algorithmic Trading by Retail Investors
+APPLICABLE TO: Stock Exchanges, Clearing Corporations, Depositories,
+               Stock Brokers, and Algo Providers
+
+This circular establishes the comprehensive regulatory framework for
+algorithmic trading by retail investors in India. It supersedes all
+prior interim guidelines and circulars on this subject.
+
+The framework aims to balance innovation in retail algo trading with
+investor protection, market integrity, and systemic risk management.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 1: ORDER FREQUENCY THRESHOLDS
+─────────────────────────────────────
+
+1.1 CLASSIFICATION OF RETAIL ALGORITHMIC TRADERS
+
+Retail investors deploying algorithmic trading strategies through
+broker-provided APIs shall be classified into the following categories
+based on their order frequency:
+
+(a) TECH-SAVVY RETAIL INVESTORS:
+    - Maximum order frequency: Less than 10 orders per second
+    - Registration requirement: Light registration through broker
+    - The broker must maintain a registry of all tech-savvy retail
+      clients using algorithmic order placement
+    - No separate exchange-level registration needed for the investor
+    - The broker bears responsibility for monitoring compliance
+
+(b) HIGH-FREQUENCY RETAIL ALGO TRADERS:
+    - Order frequency: 10 or more orders per second
+    - Registration requirement: Full exchange algo registration
+    - Must submit strategy documentation to the exchange
+    - Subject to enhanced surveillance and monitoring
+    - Must maintain collateral deposits as prescribed by exchange
+
+1.2 ORDER-TO-TRADE RATIO MONITORING
+
+Exchanges shall implement real-time monitoring of the order-to-trade
+ratio (OTR) for all algorithmic orders. The prescribed limits are:
+
+    - Equity cash segment: OTR not to exceed 50:1
+    - Equity derivatives segment: OTR not to exceed 100:1
+    - Currency derivatives segment: OTR not to exceed 100:1
+
+Algos consistently breaching OTR limits may be suspended by the
+exchange without prior notice, and the broker must be informed
+immediately.
+
+1.3 THROTTLING AND RATE LIMITING
+
+Exchanges must implement per-client throttling mechanisms that:
+    - Track order count per second at the client level
+    - Automatically reject orders that would breach the 10/sec limit
+    - Send real-time alerts to the broker when a client approaches
+      80% of the threshold (8 orders/sec sustained over 5 seconds)
+    - Maintain a 30-day rolling log of all throttling events
+
+For investment-style algorithms with holding periods exceeding one
+trading day, the effective order frequency is typically well below
+1 order per second and does not trigger frequency limits.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 2: BLACK-BOX vs TRANSPARENT ALGORITHM CLASSIFICATION
+────────────────────────────────────────────────────────────
+
+2.1 DEFINITIONS
+
+(a) TRANSPARENT (WHITE-BOX) ALGORITHM:
+    An algorithm whose trading logic can be fully explained in clear,
+    auditable terms to the broker, exchange, or regulator. The entry
+    and exit conditions must be expressible as deterministic rules
+    that a qualified compliance officer can independently verify.
+
+    Examples of white-box strategies:
+    - Moving average crossover (e.g., buy when 50-day SMA crosses
+      above 200-day SMA)
+    - RSI-based mean reversion (e.g., buy when RSI < 30, sell > 70)
+    - Price-volume breakout (e.g., buy when price breaks 52-week high
+      with 2x average volume)
+    - Bollinger Band mean reversion
+
+(b) BLACK-BOX ALGORITHM:
+    An algorithm whose trading logic cannot be explained in clear,
+    auditable terms. This classification applies when:
+
+    (i)   The entry/exit logic is determined by a machine learning
+          model, neural network, deep learning system, or large
+          language model (LLM) without explicit rule documentation.
+
+    (ii)  The signal source (e.g., sentiment derived from news,
+          social media, or alternative data) cannot be independently
+          verified, replicated, or audited.
+
+    (iii) The logic description provided to the broker is insufficient
+          for a qualified compliance officer to understand the specific
+          conditions under which trades are placed.
+
+    (iv)  The algorithm adapts its parameters dynamically based on
+          market conditions without a documented adaptation framework.
+
+2.2 REQUIREMENTS FOR BLACK-BOX ALGORITHMS
+
+If a strategy is classified as black-box, the algo provider must:
+
+    (a) Register as a Research Analyst (RA) with SEBI under the
+        SEBI (Research Analysts) Regulations, 2014.
+
+    (b) Maintain detailed records of model training data, feature
+        selection methodology, and model validation results.
+
+    (c) Provide quarterly model performance reports to the broker.
+
+    (d) Implement model risk management controls including:
+        - Out-of-sample testing documentation
+        - Model degradation monitoring
+        - Fallback rules when model confidence is low
+
+2.3 REQUIREMENTS FOR WHITE-BOX ALGORITHMS
+
+White-box strategies must provide:
+    - Explicit entry/exit conditions in natural language AND code
+    - Mathematical or rule-based signal definitions
+    - Complete logic description auditable by non-technical reviewers
+    - Source attribution for all data inputs (price, volume, fundamentals)
+    - Backtested performance with clear methodology documentation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 3: MANDATORY EXCHANGE-ASSIGNED ALGO TAG IDS
+───────────────────────────────────────────────────
+
+3.1 ALGO TAG ID FORMAT AND ASSIGNMENT
+
+Every algorithmic trading strategy deployed by a retail investor must
+receive a unique Algo Tag ID from the relevant stock exchange. The
+format shall be:
+
+    NSE-ALGO-{YEAR}-{UNIQUE_ID}
+
+Where:
+    - NSE/BSE: The exchange code
+    - ALGO: Fixed identifier for algorithmic strategies
+    - YEAR: Four-digit year of registration
+    - UNIQUE_ID: Eight-character alphanumeric identifier assigned by
+      the exchange registration system
+
+Example: NSE-ALGO-2025-A3F7B2C1
+
+3.2 TAGGING REQUIREMENTS
+
+All orders generated by a registered algorithm must include:
+
+    (a) The Algo Tag ID in every order submitted to the exchange
+    (b) A unique order correlation identifier linking the order to
+        the specific signal that generated it
+    (c) Timestamp of signal generation (when the algo decided to trade)
+    (d) Timestamp of order submission (when the order reached the
+        exchange matching engine)
+
+3.3 RE-REGISTRATION
+
+    (a) Algo Tag IDs are valid for one calendar year and must be
+        renewed annually through the broker.
+    (b) Any material modification to the strategy logic, parameters,
+        or risk controls requires re-registration and a new Algo Tag ID.
+    (c) Minor parameter adjustments (e.g., stop-loss percentage changes
+        within a pre-approved range) do not require re-registration
+        but must be documented.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 4: BROKER RESPONSIBILITY FRAMEWORK
+──────────────────────────────────────────
+
+4.1 BROKER AS PRINCIPAL
+
+Under the SEBI framework, the stock broker is the "principal" in all
+algorithmic trading activities conducted through its platform:
+
+    (a) The broker bears PRIMARY responsibility for all orders placed
+        through its systems, including algorithmic orders placed by
+        retail investors using the broker's API.
+
+    (b) The broker must implement the following controls:
+
+        PRE-TRADE RISK CONTROLS:
+        - Maximum order value limits per client per day
+        - Maximum position limits per client (single stock and aggregate)
+        - Price band checks (reject orders beyond exchange circuit limits)
+        - Order rate limiting per client (enforce 10/sec threshold)
+
+        REAL-TIME MONITORING:
+        - Continuous surveillance of all active algo strategies
+        - Automatic alerts on unusual trading patterns
+        - Dashboard visibility into per-client algo performance
+
+        KILL-SWITCH CAPABILITY:
+        - Ability to halt ANY algo immediately at broker level
+        - Must be operable by risk management team 24x7 during market hours
+        - Quarterly kill-switch testing mandatory
+
+    (c) Daily risk exposure reports must be generated and archived.
+
+4.2 ALGO PROVIDER AS AGENT
+
+    (a) The algorithm provider (whether the retail investor or a
+        third-party vendor) acts as the "agent."
+
+    (b) The agent is responsible for:
+        - Accuracy of strategy logic documentation
+        - Timely notification of any strategy modifications
+        - Cooperation with broker's risk management team
+        - Reporting of any technical failures or anomalous behavior
+
+    (c) Liability: While the broker cannot transfer regulatory
+        liability to the agent, the broker may contractually seek
+        indemnification from the algo provider/investor for losses
+        arising from strategy malfunctions.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 5: RESEARCH ANALYST REGISTRATION FOR BLACK-BOX PROVIDERS
+────────────────────────────────────────────────────────────────
+
+5.1 APPLICABILITY
+
+Any entity or individual providing black-box algorithmic strategies
+to retail investors (directly or through a broker platform) must
+register as a Research Analyst under SEBI (RA) Regulations, 2014.
+
+5.2 REGISTRATION REQUIREMENTS
+
+    (a) QUALIFICATION: NISM Series XV certification mandatory
+    (b) NET WORTH: Minimum ₹5 lakh for individuals, ₹50 lakh for
+        body corporates
+    (c) INFRASTRUCTURE: Adequate compliance and IT infrastructure
+    (d) COMPLIANCE OFFICER: Designated compliance officer required
+        for body corporates
+
+5.3 ONGOING OBLIGATIONS
+
+Registered RA providing algo strategies must:
+
+    (a) Disclose all material conflicts of interest
+    (b) Maintain records of all research and recommendations for
+        a minimum of 5 years
+    (c) Not guarantee returns or provide misleading performance claims
+    (d) Clearly label all algo outputs as "research" and not
+        "investment advice" unless also registered as an Investment
+        Adviser (IA)
+    (e) Submit quarterly compliance reports to SEBI
+    (f) Undergo annual SEBI inspection if requested
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 6: INVESTOR DISCLOSURE REQUIREMENTS
+───────────────────────────────────────────
+
+6.1 MANDATORY DISCLOSURES
+
+Brokers offering algorithmic trading to retail clients must provide
+the following disclosures BEFORE enabling algo trading:
+
+    (a) PAST PERFORMANCE DISCLOSURE:
+        - Backtested performance with time period and methodology
+        - Live paper trading performance (if available)
+        - Prominent disclaimer: "Past performance (backtested or live)
+          is not indicative of future results"
+        - Maximum historical drawdown with date range
+
+    (b) RISK FACTOR DISCLOSURE:
+        - Algorithmic trading involves risks of technical failures
+        - Market conditions may change, invalidating strategy logic
+        - Slippage between backtested and live execution prices
+        - Concentration risk from automated position building
+        - System downtime risk and contingency procedures
+
+    (c) FEE DISCLOSURE:
+        - All charges related to API access, algo hosting, and
+          data feeds must be clearly disclosed upfront
+        - Performance-based fee structures must be separately approved
+
+6.2 ONGOING REPORTING
+
+    (a) Monthly performance statements to algo trading clients
+    (b) Real-time position visibility through broker dashboard
+    (c) Immediate notification of any strategy suspension or
+        parameter change
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 7: POST-TRADE AUDIT TRAIL REQUIREMENTS
+──────────────────────────────────────────────
+
+7.1 AUDIT TRAIL COMPONENTS
+
+The broker must maintain a complete audit trail for every algo order
+consisting of:
+
+    (a) SIGNAL AUDIT:
+        - Timestamp of signal generation
+        - Market data snapshot at signal time
+        - Strategy parameters active at signal time
+        - Signal direction (buy/sell), confidence level, and rationale
+
+    (b) ORDER AUDIT:
+        - Order type (market, limit, stop-loss)
+        - Order price and quantity
+        - Timestamp of order submission to exchange
+        - Exchange acknowledgement timestamp
+        - Order status updates (open, partial fill, filled, cancelled)
+
+    (c) EXECUTION AUDIT:
+        - Fill price and quantity
+        - Slippage from signal price
+        - Market impact estimate
+        - Settlement confirmation
+
+    (d) RISK EVENT AUDIT:
+        - Stop-loss trigger events
+        - Take-profit trigger events
+        - Position limit breach events
+        - Kill-switch activation events
+        - Any manual intervention by broker risk team
+
+7.2 RETENTION POLICY
+
+    (a) All audit trail records must be preserved for a minimum of
+        7 (seven) years from the date of the trade.
+    (b) Records must be maintained in a tamper-evident format.
+    (c) Records must be searchable by: Algo Tag ID, date range,
+        client ID, and ticker symbol.
+    (d) SEBI may request access to audit trail records at any time
+        during the retention period.
+
+7.3 FORMAT REQUIREMENTS
+
+    (a) Audit data must be stored in structured format (JSON or XML)
+    (b) Each record must include the Algo Tag ID for traceability
+    (c) Timestamps must be in ISO 8601 format with millisecond
+        precision and IST timezone designation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 8: PAPER TRADING AND PRE-DEPLOYMENT REQUIREMENTS
+───────────────────────────────────────────────────────
+
+8.1 MANDATORY PAPER TRADING PERIOD
+
+    (a) All new algorithmic strategies must undergo a minimum 30-day
+        paper trading period before live deployment.
+    (b) Paper trading must be conducted in real market conditions
+        using live market data feeds.
+    (c) The paper trading environment must simulate realistic
+        execution conditions including:
+        - Order book impact estimation
+        - Realistic fill assumptions (not guaranteed fills)
+        - Brokerage and exchange charges
+        - Slippage estimation based on historical data
+
+8.2 PAPER TRADING EVALUATION CRITERIA
+
+Before approving live deployment, the broker must verify:
+
+    (a) Strategy performance meets the stated backtest expectations
+        within a reasonable tolerance (±30% of backtested returns)
+    (b) Maximum drawdown during paper trading does not exceed the
+        stated stop-loss parameters
+    (c) No technical failures or erroneous orders during paper trading
+    (d) Order frequency remains within the approved limits
+    (e) The strategy completes at least 10 round-trip trades during
+        the paper trading period
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 9: POSITION SIZING AND PORTFOLIO CONCENTRATION LIMITS
+────────────────────────────────────────────────────────────
+
+9.1 SINGLE POSITION LIMITS
+
+    (a) No single algorithmic strategy shall deploy more than 10%
+        of the total portfolio value in a single position.
+    (b) Positions exceeding 10% but not exceeding 20% shall be
+        flagged and require explicit acknowledgement from the investor.
+    (c) Positions exceeding 20% of portfolio value shall be
+        automatically rejected by the broker's risk management system.
+
+9.2 AGGREGATE PORTFOLIO LIMITS
+
+    (a) Total capital deployed across ALL algorithmic strategies
+        shall not exceed 15% of the total portfolio value without
+        explicit risk committee approval.
+    (b) Correlation-adjusted exposure: If two or more strategies
+        trade highly correlated instruments (correlation > 0.7),
+        their combined exposure counts as a single concentration risk.
+    (c) Sector concentration: No more than 25% of algo-deployed
+        capital in a single sector.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SECTION 10: GRIEVANCE REDRESSAL
+──────────────────────────────
+
+10.1 A separate grievance redressal mechanism for algorithmic trading
+     complaints must be established by every broker offering algo
+     trading services to retail clients.
+
+10.2 Response timeline:
+     - Acknowledgement: Within 24 hours of complaint receipt
+     - Resolution: Within 7 business days
+     - Escalation to exchange: If unresolved within 15 business days
+
+10.3 Brokers must maintain a dedicated algo trading helpdesk with
+     staff trained in algorithmic trading concepts and the SEBI
+     regulatory framework.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This circular is issued in exercise of powers conferred under Section
+11(1) of the Securities and Exchange Board of India Act, 1992, read
+with Section 11(2)(j) of the said Act.
+
+All stock exchanges, clearing corporations, depositories, and stock
+brokers are directed to ensure compliance with this circular within
+90 days of its issuance.
+
+                                        Sd/-
+                                        General Manager
+                                        Market Regulation Department
+                                        Securities and Exchange Board of India

@@ -1,0 +1,407 @@
+{
+  "NSE-ALGO-2026-34523E33": {
+    "proposal_id": "prop_45e9b672",
+    "ticker": "string",
+    "agent_name": "momentum_agent",
+    "allocation_pct": 5.0,
+    "status": "approved",
+    "timestamp": "2026-06-17T05:25:47.092926+00:00",
+    "debate_messages": [
+      {
+        "type": "proposal",
+        "proposal_id": "prop_45e9b672",
+        "agent_name": "momentum_agent",
+        "strategy_type": "momentum",
+        "ticker": "string",
+        "entry_condition": "50-day SMA crosses above 200-day SMA (golden cross)",
+        "exit_condition": "50-day SMA crosses below 200-day SMA or stop-loss hit",
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 6.0,
+        "position_size_pct": 5.0,
+        "backtest_summary": {
+          "win_rate": 62.5,
+          "max_drawdown": 8.2,
+          "sharpe": 1.45
+        },
+        "reasoning": "Momentum strategy based on SMA crossover. Entry signal is purely mathematical.",
+        "timestamp": "2026-06-17T05:25:41.872348+00:00",
+        "sender_id": "momentum_agent",
+        "posted_at": "2026-06-17T05:25:41.872422+00:00"
+      },
+      {
+        "type": "compliance_verdict",
+        "verdict_id": "comp_b5b3dddb",
+        "target_proposal_id": "prop_45e9b672",
+        "status": "approved",
+        "checks_run": [
+          {
+            "check_name": "order_frequency",
+            "passed": true,
+            "message": "Order frequency: 0.0001 orders/sec (2/day). Well under the 10 orders/sec threshold for tech-savvy retail. Light registration applies."
+          },
+          {
+            "check_name": "explainability",
+            "passed": true,
+            "message": "Strategy classified as TRANSPARENT (white-box). Rule-based logic with auditable conditions. No RA registration required."
+          },
+          {
+            "check_name": "position_limits",
+            "passed": true,
+            "message": "Position size 5.0% is within the recommended 10% single-position limit. Compliant."
+          },
+          {
+            "check_name": "audit_trail_readiness",
+            "passed": true,
+            "message": "All required fields present for exchange registration and order tagging. Algo Tag ID can be assigned upon approval."
+          }
+        ],
+        "reasoning": "All 4 SEBI compliance checks passed. Strategy approved for registration. Algo Tag: NSE-ALGO-2026-34523E33",
+        "required_action": null,
+        "algo_tag_id": "NSE-ALGO-2026-34523E33",
+        "timestamp": "2026-06-17T05:25:47.045296+00:00",
+        "sender_id": "compliance_agent",
+        "posted_at": "2026-06-17T05:25:47.045315+00:00"
+      }
+    ],
+    "final_verdict": {
+      "type": "final_verdict",
+      "allocations": [
+        {
+          "proposal_id": "prop_45e9b672",
+          "ticker": "string",
+          "agent_name": "momentum_agent",
+          "allocation_pct": 5.0,
+          "status": "approved",
+          "algo_tag_id": "NSE-ALGO-2026-34523E33"
+        }
+      ],
+      "portfolio_risk_summary": "Total capital deployed: 5.0% (limit: 15.0%). Strategies approved: 1/1. No high correlations found.",
+      "reasoning": "LLM reasoning unavailable. Using rule-based allocation.",
+      "timestamp": "2026-06-17T05:25:47.092691+00:00"
+    }
+  },
+  "NSE-ALGO-2026-6F4223CA": {
+    "proposal_id": "prop_c63bd275",
+    "ticker": "string",
+    "agent_name": "momentum_agent",
+    "allocation_pct": 5.0,
+    "status": "approved",
+    "timestamp": "2026-06-17T05:30:39.880575+00:00",
+    "debate_messages": [
+      {
+        "type": "proposal",
+        "proposal_id": "prop_c63bd275",
+        "agent_name": "momentum_agent",
+        "strategy_type": "momentum",
+        "ticker": "string",
+        "entry_condition": "50-day SMA crosses above 200-day SMA (golden cross)",
+        "exit_condition": "50-day SMA crosses below 200-day SMA or stop-loss hit",
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 6.0,
+        "position_size_pct": 5.0,
+        "backtest_summary": {
+          "win_rate": 62.5,
+          "max_drawdown": 8.2,
+          "sharpe": 1.45
+        },
+        "reasoning": "Momentum strategy based on SMA crossover. Entry signal is purely mathematical.",
+        "timestamp": "2026-06-17T05:30:37.095241+00:00",
+        "sender_id": "momentum_agent",
+        "posted_at": "2026-06-17T05:30:37.095293+00:00"
+      },
+      {
+        "type": "compliance_verdict",
+        "verdict_id": "comp_6208fac1",
+        "target_proposal_id": "prop_c63bd275",
+        "status": "approved",
+        "checks_run": [
+          {
+            "check_name": "order_frequency",
+            "passed": true,
+            "message": "Order frequency: 0.0001 orders/sec (2/day). Well under the 10 orders/sec threshold for tech-savvy retail. Light registration applies."
+          },
+          {
+            "check_name": "explainability",
+            "passed": true,
+            "message": "Strategy classified as TRANSPARENT (white-box). Rule-based logic with auditable conditions. No RA registration required."
+          },
+          {
+            "check_name": "position_limits",
+            "passed": true,
+            "message": "Position size 5.0% is within the recommended 10% single-position limit. Compliant."
+          },
+          {
+            "check_name": "audit_trail_readiness",
+            "passed": true,
+            "message": "All required fields present for exchange registration and order tagging. Algo Tag ID can be assigned upon approval."
+          }
+        ],
+        "reasoning": "All 4 SEBI compliance checks passed. Strategy approved for registration. Algo Tag: NSE-ALGO-2026-6F4223CA",
+        "required_action": null,
+        "algo_tag_id": "NSE-ALGO-2026-6F4223CA",
+        "timestamp": "2026-06-17T05:30:39.740461+00:00",
+        "sender_id": "compliance_agent",
+        "posted_at": "2026-06-17T05:30:39.740497+00:00"
+      }
+    ],
+    "final_verdict": {
+      "type": "final_verdict",
+      "allocations": [
+        {
+          "proposal_id": "prop_c63bd275",
+          "ticker": "string",
+          "agent_name": "momentum_agent",
+          "allocation_pct": 5.0,
+          "status": "approved",
+          "algo_tag_id": "NSE-ALGO-2026-6F4223CA"
+        }
+      ],
+      "portfolio_risk_summary": "Total capital deployed: 5.0% (limit: 15.0%). Strategies approved: 1/1. No high correlations found.",
+      "reasoning": "LLM reasoning unavailable. Using rule-based allocation.",
+      "timestamp": "2026-06-17T05:30:39.880097+00:00"
+    }
+  },
+  "NSE-ALGO-2026-C083BED5": {
+    "proposal_id": "prop_9b72cf06",
+    "ticker": "string",
+    "agent_name": "momentum_agent",
+    "allocation_pct": 5.0,
+    "status": "approved",
+    "timestamp": "2026-06-17T05:33:36.061480+00:00",
+    "debate_messages": [
+      {
+        "type": "proposal",
+        "proposal_id": "prop_9b72cf06",
+        "agent_name": "momentum_agent",
+        "strategy_type": "momentum",
+        "ticker": "string",
+        "entry_condition": "50-day SMA crosses above 200-day SMA (golden cross)",
+        "exit_condition": "50-day SMA crosses below 200-day SMA or stop-loss hit",
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 6.0,
+        "position_size_pct": 5.0,
+        "backtest_summary": {
+          "win_rate": 62.5,
+          "max_drawdown": 8.2,
+          "sharpe": 1.45
+        },
+        "reasoning": "Momentum strategy based on SMA crossover. Entry signal is purely mathematical.",
+        "timestamp": "2026-06-17T05:33:31.950513+00:00",
+        "sender_id": "momentum_agent",
+        "posted_at": "2026-06-17T05:33:31.950584+00:00"
+      },
+      {
+        "type": "compliance_verdict",
+        "verdict_id": "comp_f656abe5",
+        "target_proposal_id": "prop_9b72cf06",
+        "status": "approved",
+        "checks_run": [
+          {
+            "check_name": "order_frequency",
+            "passed": true,
+            "message": "Order frequency: 0.0001 orders/sec (2/day). Well under the 10 orders/sec threshold for tech-savvy retail. Light registration applies."
+          },
+          {
+            "check_name": "explainability",
+            "passed": true,
+            "message": "Strategy classified as TRANSPARENT (white-box). Rule-based logic with auditable conditions. No RA registration required."
+          },
+          {
+            "check_name": "position_limits",
+            "passed": true,
+            "message": "Position size 5.0% is within the recommended 10% single-position limit. Compliant."
+          },
+          {
+            "check_name": "audit_trail_readiness",
+            "passed": true,
+            "message": "All required fields present for exchange registration and order tagging. Algo Tag ID can be assigned upon approval."
+          }
+        ],
+        "reasoning": "All 4 SEBI compliance checks passed. Strategy approved for registration. Algo Tag: NSE-ALGO-2026-C083BED5",
+        "required_action": null,
+        "algo_tag_id": "NSE-ALGO-2026-C083BED5",
+        "timestamp": "2026-06-17T05:33:35.923301+00:00",
+        "sender_id": "compliance_agent",
+        "posted_at": "2026-06-17T05:33:35.923341+00:00"
+      }
+    ],
+    "final_verdict": {
+      "type": "final_verdict",
+      "allocations": [
+        {
+          "proposal_id": "prop_9b72cf06",
+          "ticker": "string",
+          "agent_name": "momentum_agent",
+          "allocation_pct": 5.0,
+          "status": "approved",
+          "algo_tag_id": "NSE-ALGO-2026-C083BED5"
+        }
+      ],
+      "portfolio_risk_summary": "Total capital deployed: 5.0% (limit: 15.0%). Strategies approved: 1/1. No high correlations found.",
+      "reasoning": "LLM reasoning unavailable. Using rule-based allocation.",
+      "timestamp": "2026-06-17T05:33:36.061046+00:00"
+    }
+  },
+  "NSE-ALGO-2026-CF2FA3D3": {
+    "proposal_id": "prop_f0867d70",
+    "ticker": "string",
+    "agent_name": "momentum_agent",
+    "allocation_pct": 5.0,
+    "status": "approved",
+    "timestamp": "2026-06-17T05:35:15.571190+00:00",
+    "debate_messages": [
+      {
+        "type": "proposal",
+        "proposal_id": "prop_f0867d70",
+        "agent_name": "momentum_agent",
+        "strategy_type": "momentum",
+        "ticker": "string",
+        "entry_condition": "50-day SMA crosses above 200-day SMA (golden cross)",
+        "exit_condition": "50-day SMA crosses below 200-day SMA or stop-loss hit",
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 6.0,
+        "position_size_pct": 5.0,
+        "backtest_summary": {
+          "win_rate": 62.5,
+          "max_drawdown": 8.2,
+          "sharpe": 1.45
+        },
+        "reasoning": "Momentum strategy based on SMA crossover. Entry signal is purely mathematical.",
+        "timestamp": "2026-06-17T05:35:11.129513+00:00",
+        "sender_id": "momentum_agent",
+        "posted_at": "2026-06-17T05:35:11.129566+00:00"
+      },
+      {
+        "type": "compliance_verdict",
+        "verdict_id": "comp_468d7500",
+        "target_proposal_id": "prop_f0867d70",
+        "status": "approved",
+        "checks_run": [
+          {
+            "check_name": "order_frequency",
+            "passed": true,
+            "message": "Order frequency: 0.0001 orders/sec (2/day). Well under the 10 orders/sec threshold for tech-savvy retail. Light registration applies."
+          },
+          {
+            "check_name": "explainability",
+            "passed": true,
+            "message": "Strategy classified as TRANSPARENT (white-box). Rule-based logic with auditable conditions. No RA registration required."
+          },
+          {
+            "check_name": "position_limits",
+            "passed": true,
+            "message": "Position size 5.0% is within the recommended 10% single-position limit. Compliant."
+          },
+          {
+            "check_name": "audit_trail_readiness",
+            "passed": true,
+            "message": "All required fields present for exchange registration and order tagging. Algo Tag ID can be assigned upon approval."
+          }
+        ],
+        "reasoning": "All 4 SEBI compliance checks passed. Strategy approved for registration. Algo Tag: NSE-ALGO-2026-CF2FA3D3",
+        "required_action": null,
+        "algo_tag_id": "NSE-ALGO-2026-CF2FA3D3",
+        "timestamp": "2026-06-17T05:35:15.400522+00:00",
+        "sender_id": "compliance_agent",
+        "posted_at": "2026-06-17T05:35:15.400548+00:00"
+      }
+    ],
+    "final_verdict": {
+      "type": "final_verdict",
+      "allocations": [
+        {
+          "proposal_id": "prop_f0867d70",
+          "ticker": "string",
+          "agent_name": "momentum_agent",
+          "allocation_pct": 5.0,
+          "status": "approved",
+          "algo_tag_id": "NSE-ALGO-2026-CF2FA3D3"
+        }
+      ],
+      "portfolio_risk_summary": "Total capital deployed: 5.0% (limit: 15.0%). Strategies approved: 1/1. No high correlations found.",
+      "reasoning": "LLM reasoning unavailable. Using rule-based allocation.",
+      "timestamp": "2026-06-17T05:35:15.570739+00:00"
+    }
+  },
+  "NSE-ALGO-2026-02CFCB1D": {
+    "proposal_id": "prop_ce3acc3c",
+    "ticker": "string",
+    "agent_name": "momentum_agent",
+    "allocation_pct": 5.0,
+    "status": "approved",
+    "timestamp": "2026-06-17T05:36:56.743111+00:00",
+    "debate_messages": [
+      {
+        "type": "proposal",
+        "proposal_id": "prop_ce3acc3c",
+        "agent_name": "momentum_agent",
+        "strategy_type": "momentum",
+        "ticker": "string",
+        "entry_condition": "50-day SMA crosses above 200-day SMA (golden cross)",
+        "exit_condition": "50-day SMA crosses below 200-day SMA or stop-loss hit",
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 6.0,
+        "position_size_pct": 5.0,
+        "backtest_summary": {
+          "win_rate": 62.5,
+          "max_drawdown": 8.2,
+          "sharpe": 1.45
+        },
+        "reasoning": "Momentum strategy based on SMA crossover. Entry signal is purely mathematical.",
+        "timestamp": "2026-06-17T05:36:41.484219+00:00",
+        "sender_id": "momentum_agent",
+        "posted_at": "2026-06-17T05:36:41.484307+00:00"
+      },
+      {
+        "type": "compliance_verdict",
+        "verdict_id": "comp_94a198d0",
+        "target_proposal_id": "prop_ce3acc3c",
+        "status": "approved",
+        "checks_run": [
+          {
+            "check_name": "order_frequency",
+            "passed": true,
+            "message": "Order frequency: 0.0001 orders/sec (2/day). Well under the 10 orders/sec threshold for tech-savvy retail. Light registration applies."
+          },
+          {
+            "check_name": "explainability",
+            "passed": true,
+            "message": "Strategy classified as TRANSPARENT (white-box). Rule-based logic with auditable conditions. No RA registration required."
+          },
+          {
+            "check_name": "position_limits",
+            "passed": true,
+            "message": "Position size 5.0% is within the recommended 10% single-position limit. Compliant."
+          },
+          {
+            "check_name": "audit_trail_readiness",
+            "passed": true,
+            "message": "All required fields present for exchange registration and order tagging. Algo Tag ID can be assigned upon approval."
+          }
+        ],
+        "reasoning": "All 4 SEBI compliance checks passed. Strategy approved for registration. Algo Tag: NSE-ALGO-2026-02CFCB1D",
+        "required_action": null,
+        "algo_tag_id": "NSE-ALGO-2026-02CFCB1D",
+        "timestamp": "2026-06-17T05:36:55.352760+00:00",
+        "sender_id": "compliance_agent",
+        "posted_at": "2026-06-17T05:36:55.352784+00:00"
+      }
+    ],
+    "final_verdict": {
+      "type": "final_verdict",
+      "allocations": [
+        {
+          "proposal_id": "prop_ce3acc3c",
+          "ticker": "string",
+          "agent_name": "momentum_agent",
+          "allocation_pct": 5.0,
+          "status": "approved",
+          "algo_tag_id": "NSE-ALGO-2026-02CFCB1D"
+        }
+      ],
+      "portfolio_risk_summary": "Total capital deployed: 5.0% (limit: 15.0%). Strategies approved: 1/1. No high correlations found.",
+      "reasoning": "### Final Capital Allocation Decisions\n\nGiven the approved strategies and the rules for allocation, we will evaluate each proposal based on its Sharpe ratio, position size, and correlation with other strategies in the portfolio.\n\n1. **prop_ce3acc3c**:\n   - **Proposal ID**: prop_ce3acc3c\n   - **Final Allocation %**: 5.0%\n   - **Status**: Approved\n   - **Brief Notes**: This strategy has a Sharpe ratio of 1.45, indicating a good balance between risk and return. The initial proposed position size is",
+      "timestamp": "2026-06-17T05:36:56.742512+00:00"
+    }
+  }
+}
