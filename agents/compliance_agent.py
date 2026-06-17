@@ -341,3 +341,46 @@ class ComplianceAgent:
 
         # Re-run compliance
         return await self.check_proposal(updated_proposal)
+    
+
+# ── Wrapper for main.py compatibility ────────────────────────────────────────
+
+def run_compliance_agent(proposals: list) -> "BandMessage":
+    """
+    Synchronous wrapper called by main.py.
+    """
+    import asyncio
+    from band.message_schema import BandMessage, make_compliance_verdict
+
+    verdicts = []
+
+    for proposal in proposals:
+        payload = proposal.payload or {}
+        proposal_data = {
+            "proposal_id":    proposal.message_id,
+            "strategy":       payload.get("strategy", "unknown"),
+            "picks":          payload.get("picks", []),
+            "weights":        payload.get("weights", []),
+            "signal_method":  payload.get("signal_method", "unknown"),
+            "sebi_compliant": payload.get("sebi_compliant", False),
+            "raw_output":     payload.get("raw_output", ""),
+        }
+
+        try:
+            agent  = ComplianceAgent(room_manager=None)
+            result = asyncio.run(agent.check_proposal(proposal_data))
+            if result:
+                verdicts.append(result)
+        except Exception as e:
+            print(f"[compliance_agent] Warning: {e}")
+
+    # Return a summary compliance verdict BandMessage
+    approved = len([v for v in verdicts if getattr(v, "status", "") == "approved"])
+    total    = len(proposals)
+
+    return make_compliance_verdict(
+        sender="compliance_agent",
+        target_strategy="all_proposals",
+        status="approved" if approved == total else "flagged",
+        reasoning=f"{approved}/{total} proposals passed SEBI compliance checks.",
+    )    

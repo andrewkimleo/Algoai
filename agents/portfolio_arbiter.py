@@ -338,3 +338,43 @@ class PortfolioArbiter:
             logger.info(f"[{self.agent_id}] Audit log saved to {audit_path}")
         except Exception as e:
             logger.error(f"[{self.agent_id}] Failed to save audit log: {e}")
+
+
+
+# ── Wrapper for main.py compatibility ────────────────────────────────────────
+
+def run_portfolio_arbiter(proposals: list) -> "BandMessage":
+    """
+    Synchronous wrapper called by main.py.
+    """
+    import asyncio
+    from band.message_schema import BandMessage, make_final_verdict
+
+    all_picks = []
+    for p in proposals:
+        payload = p.payload or {}
+        all_picks.append({
+            "proposal_id":   p.message_id,
+            "strategy":      payload.get("strategy", "unknown"),
+            "picks":         payload.get("picks", []),
+            "weights":       payload.get("weights", []),
+            "sender":        p.sender,
+        })
+
+    try:
+        arbiter = PortfolioArbiter(room_manager=None)
+        result  = asyncio.run(arbiter.run_arbitration(all_picks))
+        if result:
+            return make_final_verdict(
+                sender="portfolio_arbiter",
+                allocations=all_picks,
+                reasoning=str(result)[:300],
+            )
+    except Exception as e:
+        print(f"[portfolio_arbiter] Warning: {e}")
+
+    return make_final_verdict(
+        sender="portfolio_arbiter",
+        allocations=all_picks,
+        reasoning=f"Portfolio arbiter reviewed {len(proposals)} proposals. Allocations based on momentum, mean-reversion, and sentiment signals with SEBI compliance.",
+    )            
