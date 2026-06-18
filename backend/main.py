@@ -1,363 +1,341 @@
 """
-AlgoDesk Backend — Main Entry Point.
+main.py
+-------
+AlgoDesk entry point.
 
-Initializes FastAPI, sets up the Band room, and orchestrates the
-full agent pipeline: proposals → stress test → compliance → arbitration.
+Orchestrates the full multi-agent debate:
+  1. Reads agent_config.yaml
+  2. Creates a Band chat room (via the orchestrator agent's API key)
+  3. Runs strategy agents (momentum, mean_reversion, sentiment) in order
+  4. Posts each proposal as a message to the Band room
+  5. Passes all proposals to review agents (stress_test, compliance, arbiter)
+  6. Each review agent reads proposals, posts challenges/verdicts to Band
+  7. Saves the full audit trail to band/audit_log.json
+
+Run from the backend/ folder:
+    python main.py
+    python main.py --mode mock        # forces mock market data + news
+    python main.py --mode live        # forces live data
+    python main.py --skip-review      # runs only strategy agents (faster testing)
 """
 
-from __future__ import annotations
-
-import asyncio
-import logging
 import os
 import sys
-from contextlib import asynccontextmanager
-from pathlib import Path
-
-# Fix CrewAI 1.14+ bug where it injects Anthropic's 'cache_breakpoint' into Groq/OpenAI messages
-import litellm
-_original_completion = litellm.completion
-
-def _patched_completion(*args, **kwargs):
-    if "messages" in kwargs:
-        for msg in kwargs["messages"]:
-            if isinstance(msg, dict) and "cache_breakpoint" in msg:
-                del msg["cache_breakpoint"]
-    return _original_completion(*args, **kwargs)
-
-litellm.completion = _patched_completion
-
+import json
+import time
+import argparse
+import importlib
+import requests
+import yaml
+from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
 
-# Load .env from the backend directory
-_env_path = Path(__file__).parent / ".env"
-if _env_path.exists():
-    load_dotenv(_env_path)
+# ── Load .env first, before anything else ────────────────────────────────────
+load_dotenv()
 
-# Ensure the backend directory is on the path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+# ── Path setup ────────────────────────────────────────────────────────────────
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from api.server import router as api_router, register_session
-from band.room_manager import BandRoomManager
-from agents.stress_test_agent import StressTestAgent
-from agents.compliance_agent import ComplianceAgent
-from agents.portfolio_arbiter import PortfolioArbiter
+from band.message_schema import BandMessage, make_status_update
 
-# ── Logging ──────────────────────────────────────────────────────────────────
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+# ── Constants ─────────────────────────────────────────────────────────────────
+BAND_BASE_URL  = "https://app.band.ai"
+CONFIG_PATH    = os.path.join(os.path.dirname(__file__), "agent_config.yaml")
+AUDIT_LOG_PATH = os.path.join(os.path.dirname(__file__), "band", "audit_log.json")
 
 
-# ── Lifespan ─────────────────────────────────────────────────────────────────
+# ── Config loader ─────────────────────────────────────────────────────────────
+
+def load_config() -> dict:
+    with open(CONFIG_PATH, "r") as f:
+        return yaml.safe_load(f)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
-    logger.info("=" * 60)
-    logger.info("AlgoDesk Backend starting up...")
-    logger.info("=" * 60)
+# ── Band HTTP helpers ─────────────────────────────────────────────────────────
 
-    # Check config
-    groq_key = os.getenv("GROQ_API_KEY", "")
-    band_key = os.getenv("BAND_API_KEY", "")
-
-    if not groq_key or groq_key.startswith("your_"):
-        logger.warning(
-            "GROQ_API_KEY not configured. LLM calls will fail until set in .env"
-        )
-    else:
-        logger.info("✓ GROQ_API_KEY configured")
-
-    if not band_key or band_key.startswith("your_"):
-        logger.warning(
-            "BAND_API_KEY not configured. Running in mock mode (local only)."
-        )
-    else:
-        logger.info("✓ BAND_API_KEY configured")
-
-    logger.info("AlgoDesk Backend ready!")
-    logger.info("=" * 60)
-
-    yield
-
-    logger.info("Shutting down AlgoDesk Backend...")
-    logger.info("Cleanup complete.")
+def band_headers(api_key: str) -> dict:
+    return {
+        "X-API-Key":    api_key,
+        "Content-Type": "application/json",
+    }
 
 
-# ── FastAPI App ──────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="AlgoDesk",
-    description=(
-        "Multi-agent trading strategy governance system. "
-        "AI agents collaborate through Band to review, stress-test, "
-        "and approve algorithmic trading strategies under SEBI's framework."
-    ),
-    version="0.1.0",
-    lifespan=lifespan,
-)
-
-# CORS — allow Next.js frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include API routes
-app.include_router(api_router)
-
-
-# ── Session Orchestration ────────────────────────────────────────────────────
-
-
-async def create_and_run_session(
-    session_id: str,
-    tickers: list[str],
-    background_tasks: BackgroundTasks,
-) -> BandRoomManager:
+def create_band_room(orchestrator_api_key: str, room_name: str) -> str:
     """
-    Create a Band room and register the session.
-    Kicks off the agent pipeline as a background task.
-
-    Args:
-        session_id: Unique session identifier.
-        tickers: Stock tickers for strategy proposals.
-        background_tasks: FastAPI background tasks.
-
-    Returns:
-        The BandRoomManager for this session.
+    Create a new Band chat room.
+    Returns the room's chat_id string.
     """
-    band_key = os.getenv("BAND_API_KEY", "")
-    room_manager = BandRoomManager(
-        api_key=band_key,
-        room_name=f"algodesk-{session_id}",
+    url  = f"{BAND_BASE_URL}/api/v1/agent/chats"
+    body = {"chat": {"title": room_name}}
+
+    resp = requests.post(url, headers=band_headers(orchestrator_api_key), json=body)
+    resp.raise_for_status()
+
+    chat_id = resp.json()["data"]["id"]
+    print(f"[main] ✅ Band room created → chat_id: {chat_id}")
+    return chat_id
+
+
+def add_participant(orchestrator_api_key: str, chat_id: str, agent_id: str, agent_name: str):
+    """Add an agent as a participant to the Band room."""
+    url  = f"{BAND_BASE_URL}/api/v1/agent/chats/{chat_id}/participants"
+    body = {"participant": {"id": agent_id}}
+
+    resp = requests.post(url, headers=band_headers(orchestrator_api_key), json=body)
+    if resp.status_code in (201, 200):
+        print(f"[main]   + Added participant: {agent_name}")
+    else:
+        print(f"[main]   ⚠ Could not add {agent_name}: {resp.status_code} {resp.text[:80]}")
+
+
+def post_to_band(api_key: str, chat_id: str, band_msg: BandMessage, mentions: list = None):
+    url = f"{BAND_BASE_URL}/api/v1/agent/chats/{chat_id}/messages"
+
+    full_content = (
+        f"{band_msg.content}\n\n"
+        f"```json\n{band_msg.model_dump_json(indent=2)}\n```"
     )
 
-    # Create the Band room
-    await room_manager.create_room()
+    # Get the sender's registered Band agent ID
+    # Each agent must mention a DIFFERENT agent (not itself)
+    # Use a fixed "orchestrator" agent ID for all mentions
+    orchestrator_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID", "")
 
-    # Register agents in the room
-    agents = [
-        ("stress_test_agent", os.getenv("STRESS_TEST_AGENT_ID", "stress_test")),
-        ("compliance_agent", os.getenv("COMPLIANCE_AGENT_ID", "compliance")),
-        ("portfolio_arbiter", os.getenv("PORTFOLIO_ARBITER_ID", "arbiter")),
-    ]
-    for name, agent_id in agents:
-        await room_manager.add_agent(name, agent_id)
+    body = {
+        "message": {
+            "content": full_content,
+            "mentions": [{"id": orchestrator_id}] if orchestrator_id else [],
+        }
+    }
 
-    # Register session for API
-    register_session(session_id, {
-        "room_manager": room_manager,
-        "tickers": tickers,
-        "status": "running",
-    })
+    resp = requests.post(url, headers=band_headers(api_key), json=body)
 
-    # Run the pipeline in the background
-    background_tasks.add_task(
-        _run_full_pipeline, session_id, tickers, room_manager
-    )
+    if resp.status_code in (200, 201):
+        print(f"[main]   📨 Posted to Band: {band_msg.content[:80]}")
+        return resp.json()
+    else:
+        print(f"[main]   ⚠ Band post failed ({resp.status_code}): {resp.text[:120]}")
+        return None
 
-    return room_manager
+# ── Audit logger ──────────────────────────────────────────────────────────────
 
-
-async def _run_full_pipeline(
-    session_id: str,
-    tickers: list[str],
-    room_manager: BandRoomManager,
-) -> None:
+def save_audit_log(messages: list[BandMessage], chat_id: str):
     """
-    Background task: run the full agent pipeline.
-
-    Phase 1: Wait for proposals (from Sujan's strategy agents via Band)
-    Phase 2: Stress-test each proposal
-    Phase 3: Compliance check proposals that survive stress testing
-    Phase 4: Portfolio arbiter makes final allocation
-
-    For demo/hackathon: we simulate receiving proposals if none arrive
-    within 30 seconds.
+    Save the full debate transcript to band/audit_log.json.
+    This is the SEBI-style audit trail — every message, in order, with
+    sender, type, timestamp, and full payload.
     """
-    groq_key = os.getenv("GROQ_API_KEY", "")
+    os.makedirs(os.path.dirname(AUDIT_LOG_PATH), exist_ok=True)
 
-    stress_agent = StressTestAgent(room_manager, groq_api_key=groq_key)
-    compliance_agent = ComplianceAgent(room_manager, groq_api_key=groq_key)
-    arbiter = PortfolioArbiter(room_manager, groq_api_key=groq_key)
+    log = {
+        "chat_id":    chat_id,
+        "generated":  datetime.utcnow().isoformat(),
+        "total_messages": len(messages),
+        "messages":   [m.model_dump() for m in messages],
+    }
+
+    with open(AUDIT_LOG_PATH, "w") as f:
+        json.dump(log, f, indent=2)
+
+    print(f"[main] 📋 Audit log saved → {AUDIT_LOG_PATH}")
+
+
+# ── Agent runner ──────────────────────────────────────────────────────────────
+
+def run_agent(agent_cfg: dict) -> BandMessage | None:
+    """
+    Dynamically import and run an agent's runner function.
+    Returns a BandMessage or None if the agent fails.
+    """
+    module_path = agent_cfg["module"]
+    runner_fn   = agent_cfg["runner_fn"]
+    name        = agent_cfg["name"]
 
     try:
-        # ── Phase 1: Collect proposals ───────────────────────────────────
-        logger.info(f"[{session_id}] Phase 1: Waiting for proposals...")
-
-        # In a real setup, we'd listen via room_manager.listen().
-        # For hackathon demo, we wait a bit then use whatever proposals
-        # have arrived in the room. If none arrive, we simulate dummy ones.
-        await asyncio.sleep(5)  # Give strategy agents time to post
-
-        all_messages = room_manager.get_all_messages()
-        proposals = [m for m in all_messages if m.get("type") == "proposal"]
-
-        if not proposals:
-            logger.info(f"[{session_id}] No proposals received. Generating demo proposals...")
-            proposals = _generate_demo_proposals(session_id, tickers)
-            for p in proposals:
-                await room_manager.post_message(p, sender_id=p.get("agent_name", "demo"))
-
-        logger.info(f"[{session_id}] Received {len(proposals)} proposals")
-
-        # ── Phase 2: Stress test ─────────────────────────────────────────
-        logger.info(f"[{session_id}] Phase 2: Stress testing...")
-
-        challenges = {}
-        for proposal in proposals:
-            try:
-                challenge = await stress_agent.handle_proposal(proposal)
-                if challenge:
-                    challenges[proposal.get("proposal_id", "")] = challenge
-                    logger.info(
-                        f"  ✓ Challenge {challenge.challenge_id} → "
-                        f"{proposal.get('ticker')} ({challenge.severity})"
-                    )
-                else:
-                    logger.info(f"  ✓ {proposal.get('ticker')} passed stress test")
-            except Exception as e:
-                logger.error(f"  ✗ Stress test failed for {proposal.get('ticker')}: {e}")
-
-        # ── Phase 3: Compliance ──────────────────────────────────────────
-        logger.info(f"[{session_id}] Phase 3: Compliance checks...")
-
-        # Check proposals that either had no challenges or low severity
-        proposals_for_compliance = []
-        for proposal in proposals:
-            pid = proposal.get("proposal_id", "")
-            challenge = challenges.get(pid)
-
-            if challenge is None or challenge.severity != "high":
-                proposals_for_compliance.append(proposal)
-            else:
-                logger.info(f"  ⊘ {pid} blocked by high-severity challenge")
-
-        approved_proposals = []
-        for proposal in proposals_for_compliance:
-            try:
-                verdict = await compliance_agent.check_proposal(proposal)
-
-                if verdict.status == "approved":
-                    # Enrich proposal with algo_tag_id for arbiter
-                    proposal["algo_tag_id"] = verdict.algo_tag_id
-                    approved_proposals.append(proposal)
-                    logger.info(
-                        f"  ✓ {proposal.get('ticker')}: APPROVED "
-                        f"(tag={verdict.algo_tag_id})"
-                    )
-                elif verdict.status == "flagged":
-                    logger.info(
-                        f"  ⚠ {proposal.get('ticker')}: FLAGGED — "
-                        f"{verdict.required_action}"
-                    )
-                else:
-                    logger.info(
-                        f"  ✗ {proposal.get('ticker')}: REJECTED"
-                    )
-            except Exception as e:
-                logger.error(f"  ✗ Compliance failed for {proposal.get('ticker')}: {e}")
-
-        # ── Phase 4: Arbitration ─────────────────────────────────────────
-        logger.info(f"[{session_id}] Phase 4: Portfolio arbitration...")
-
-        if approved_proposals:
-            try:
-                verdict = await arbiter.run_arbitration(approved_proposals)
-                logger.info(f"  ✓ Final verdict posted")
-            except Exception as e:
-                logger.error(f"  ✗ Arbitration failed: {e}")
-        else:
-            logger.warning(f"[{session_id}] No proposals passed for arbitration")
-
-        # ── Done ─────────────────────────────────────────────────────────
-        total_messages = len(room_manager.get_all_messages())
-        logger.info(
-            f"[{session_id}] Pipeline complete! "
-            f"Total messages: {total_messages}"
-        )
+        print(f"\n[main] 🤖 Running {name}...")
+        module = importlib.import_module(module_path)
+        fn     = getattr(module, runner_fn)
+        result = fn()
+        print(f"[main] ✅ {name} completed.")
+        return result
 
     except Exception as e:
-        logger.error(f"[{session_id}] Pipeline failed: {e}", exc_info=True)
+        print(f"[main] ❌ {name} failed: {e}")
+        return None
 
 
-def _generate_demo_proposals(
-    session_id: str, tickers: list[str]
-) -> list[dict]:
+def run_review_agent(agent_cfg: dict, proposals: list[BandMessage]) -> BandMessage | None:
     """
-    Generate demo proposals for hackathon when no strategy agents
-    are connected. These simulate what Sujan's agents would post.
+    Run a review agent, passing all collected proposals as context.
+    Review agents (stress_test, compliance, arbiter) take proposals as input.
     """
-    from band.message_schema import Proposal, BacktestSummary
+    module_path = agent_cfg["module"]
+    runner_fn   = agent_cfg["runner_fn"]
+    name        = agent_cfg["name"]
 
-    demo_strategies = [
-        {
-            "strategy_type": "momentum",
-            "entry_condition": "50-day SMA crosses above 200-day SMA (golden cross)",
-            "exit_condition": "50-day SMA crosses below 200-day SMA or stop-loss hit",
-            "stop_loss_pct": 3.0,
-            "take_profit_pct": 6.0,
-            "position_size_pct": 5.0,
-            "reasoning": "Momentum strategy based on SMA crossover. Entry signal is purely mathematical.",
-            "backtest_summary": {"win_rate": 62.5, "max_drawdown": 8.2, "sharpe": 1.45},
-        },
-        {
-            "strategy_type": "mean_reversion",
-            "entry_condition": "Z-score of 20-day rolling price drops below -2.0",
-            "exit_condition": "Z-score reverts to 0 or stop-loss hit",
-            "stop_loss_pct": 4.0,
-            "take_profit_pct": 5.0,
-            "position_size_pct": 4.0,
-            "reasoning": "Mean reversion on oversold conditions using z-score. Purely statistical signal.",
-            "backtest_summary": {"win_rate": 58.0, "max_drawdown": 6.5, "sharpe": 1.2},
-        },
-        {
-            "strategy_type": "sentiment",
-            "entry_condition": "Positive news sentiment score > 0.7 from verified financial sources",
-            "exit_condition": "Sentiment drops below 0.3 or holding period exceeds 15 days",
-            "stop_loss_pct": 5.0,
-            "take_profit_pct": 8.0,
-            "position_size_pct": 3.0,
-            "reasoning": "Sentiment-driven strategy using news analysis from Reuters and Bloomberg feeds.",
-            "backtest_summary": {"win_rate": 55.0, "max_drawdown": 10.0, "sharpe": 0.95},
-        },
-    ]
+    try:
+        print(f"\n[main] 🔍 Running {name}...")
+        module = importlib.import_module(module_path)
+        fn     = getattr(module, runner_fn)
+        result = fn(proposals)          # review agents receive proposals list
+        print(f"[main] ✅ {name} completed.")
+        return result
 
-    proposals = []
-    for i, ticker in enumerate(tickers[:3]):
-        strategy = demo_strategies[i % len(demo_strategies)].copy()
-        bt_summary = strategy.pop("backtest_summary")
-        p = Proposal(
-            agent_name=f"{'momentum' if i==0 else 'mean_reversion' if i==1 else 'sentiment'}_agent",
-            ticker=ticker,
-            **strategy,
-            backtest_summary=BacktestSummary(**bt_summary),
-        )
-        proposals.append(p.model_dump())
-
-    return proposals
+    except Exception as e:
+        print(f"[main] ❌ {name} failed: {e}")
+        return None
 
 
-# ── Run ──────────────────────────────────────────────────────────────────────
+# ── Main orchestrator ─────────────────────────────────────────────────────────
+
+def main():
+    # ── Parse CLI args ────────────────────────────────────────────────────────
+    parser = argparse.ArgumentParser(description="AlgoDesk Multi-Agent Debate")
+    parser.add_argument("--mode",        choices=["mock", "live"], default=None,
+                        help="Override MARKET_DATA_MODE and NEWS_SCRAPER_MODE")
+    parser.add_argument("--skip-review", action="store_true",
+                        help="Only run strategy agents (for faster testing)")
+    parser.add_argument("--no-band",     action="store_true",
+                        help="Skip Band posting (run agents locally only)")
+    args = parser.parse_args()
+
+    # ── Apply mode override ───────────────────────────────────────────────────
+    if args.mode:
+        os.environ["MARKET_DATA_MODE"]  = args.mode
+        os.environ["NEWS_SCRAPER_MODE"] = args.mode
+        print(f"[main] Mode override → {args.mode}")
+
+    # ── Load config ───────────────────────────────────────────────────────────
+    config     = load_config()
+    all_agents = sorted(config["agents"], key=lambda a: a["run_order"])
+    room_cfg   = config["room"]
+
+    strategy_agents = [a for a in all_agents if a["role"] == "strategy" and a["enabled"]]
+    review_agents   = [a for a in all_agents if a["role"] != "strategy" and a["enabled"]]
+
+    print(f"\n{'='*60}")
+    print(f"  AlgoDesk — Multi-Agent Quant Debate")
+    print(f"  {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    print(f"{'='*60}")
+    print(f"  Strategy agents : {[a['name'] for a in strategy_agents]}")
+    print(f"  Review agents   : {[a['name'] for a in review_agents]}")
+    print(f"  Band posting    : {'disabled (--no-band)' if args.no_band else 'enabled'}")
+    print(f"{'='*60}\n")
+
+    # ── Band setup ────────────────────────────────────────────────────────────
+    chat_id             = None
+    orchestrator_key    = os.getenv("BAND_ORCHESTRATOR_API_KEY") or os.getenv("BAND_API_KEY")
+    agent_api_keys      = {}      # agent_name → api_key
+
+    # Load per-agent API keys from env
+    # Convention: BAND_API_KEY_MOMENTUM_AGENT, BAND_API_KEY_SENTIMENT_AGENT, etc.
+    for agent in all_agents:
+        env_key = f"BAND_API_KEY_{agent['name'].upper()}"
+        key     = os.getenv(env_key) or orchestrator_key   # fallback to orchestrator key
+        agent_api_keys[agent["name"]] = key
+
+    if not args.no_band and orchestrator_key:
+        try:
+            chat_id = create_band_room(orchestrator_key, room_cfg["name"])
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"[main] ⚠ Could not create Band room: {e}")
+            print(f"[main]   Continuing without Band posting.")
+            chat_id = None
+    elif not args.no_band:
+        print("[main] ⚠ BAND_API_KEY not set in .env — skipping Band posting.")
+
+    # ── Phase 1: Run strategy agents ─────────────────────────────────────────
+    print(f"\n{'─'*60}")
+    print(f"  PHASE 1 — Strategy Proposals")
+    print(f"{'─'*60}")
+
+    all_messages:   list[BandMessage] = []
+    proposals:      list[BandMessage] = []
+
+    for agent_cfg in strategy_agents:
+        band_msg = run_agent(agent_cfg)
+
+        if band_msg is None:
+            continue
+
+        proposals.append(band_msg)
+        all_messages.append(band_msg)
+
+        # Post to Band room
+        if chat_id and agent_api_keys.get(agent_cfg["name"]):
+            post_to_band(
+                api_key  = agent_api_keys[agent_cfg["name"]],
+                chat_id  = chat_id,
+                band_msg = band_msg,
+            )
+            time.sleep(1)   # small delay between posts
+
+    print(f"\n[main] 📊 {len(proposals)} proposals collected from strategy agents.")
+
+    if not proposals:
+        print("[main] ❌ No proposals generated. Exiting.")
+        return
+
+    # ── Phase 2: Run review agents ────────────────────────────────────────────
+    if not args.skip_review:
+        print(f"\n{'─'*60}")
+        print(f"  PHASE 2 — Review, Challenge & Compliance")
+        print(f"{'─'*60}")
+
+        for agent_cfg in review_agents:
+            band_msg = run_review_agent(agent_cfg, proposals)
+
+            if band_msg is None:
+                continue
+
+            all_messages.append(band_msg)
+
+            # Post to Band room
+            if chat_id and agent_api_keys.get(agent_cfg["name"]):
+                post_to_band(
+                    api_key  = agent_api_keys[agent_cfg["name"]],
+                    chat_id  = chat_id,
+                    band_msg = band_msg,
+                )
+                time.sleep(1)
+
+            # If this is a final verdict, we're done
+            if band_msg.message_type == "final_verdict":
+                print(f"\n[main] 🏁 Final verdict received from {agent_cfg['name']}.")
+                break
+
+    # ── Phase 3: Save audit log ───────────────────────────────────────────────
+    print(f"\n{'─'*60}")
+    print(f"  PHASE 3 — Audit Trail")
+    print(f"{'─'*60}")
+
+    save_audit_log(all_messages, chat_id or "local-run")
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print(f"  DEBATE COMPLETE")
+    print(f"{'='*60}")
+    print(f"  Total messages : {len(all_messages)}")
+    print(f"  Band room      : {f'https://app.band.ai/chat/{chat_id}' if chat_id else 'N/A'}")
+    print(f"  Audit log      : {AUDIT_LOG_PATH}")
+    print(f"{'='*60}\n")
+
+    # Print final message summary
+    for msg in all_messages:
+        icon = {
+            "proposal":           "📝",
+            "challenge":          "⚔️ ",
+            "revision":           "🔄",
+            "compliance_verdict": "✅",
+            "final_verdict":      "🏆",
+            "stress_result":      "🔥",
+            "status_update":      "ℹ️ ",
+        }.get(msg.message_type, "💬")
+        print(f"  {icon} [{msg.sender}] {msg.content[:70]}")
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-    )
+    main()

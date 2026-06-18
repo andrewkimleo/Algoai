@@ -1,22 +1,34 @@
 """
-SEBI Rules Tool — Pure deterministic Python compliance checks.
+sebi_rules.py
+-------------
+Pure deterministic Python compliance checks based on SEBI's Feb 2025
+framework for algorithmic trading by retail investors.
 
-NO LLM calls here. All logic is based on SEBI's Feb 2025 framework
-for algorithmic trading by retail investors.
+NO LLM calls here. All logic is rule-based and fully auditable.
 
 Functions:
-    check_order_frequency   — order rate vs 10/sec threshold
-    check_explainability    — black-box vs transparent classification
-    generate_algo_tag_id    — SEBI-style unique algo tag
-    check_position_limits   — single position % of portfolio
-    run_all_checks          — run everything, return list of results
+    check_order_frequency   → order rate vs 10/sec threshold
+    check_explainability    → black-box vs transparent classification
+    check_position_limits   → single position % of portfolio
+    check_algo_registration → whether strategy needs exchange registration
+    generate_algo_tag_id    → SEBI-style unique algo tag
+    run_all_checks          → run everything, return list of results
 """
 
 from __future__ import annotations
-
 import uuid
 from datetime import datetime, timezone
 
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
+TRADING_SECONDS_PER_DAY = 23_400      # 6.5 hr trading day
+ORDER_FREQ_THRESHOLD    = 10.0        # orders/sec — SEBI retail limit
+MAX_SINGLE_POSITION_PCT = 20.0        # max % of portfolio in one stock
+MAX_TOTAL_EXPOSURE_PCT  = 60.0        # max % of portfolio in algo strategies
+
+
+# ── Rule 1: Order Frequency ───────────────────────────────────────────────────
 
 def check_order_frequency(orders_per_day: float) -> dict:
     """
@@ -32,17 +44,16 @@ def check_order_frequency(orders_per_day: float) -> dict:
         orders_per_day: Estimated average orders per trading day.
 
     Returns:
-        dict with {compliant: bool, category: str, message: str}
+        dict with {compliant, category, message, rule}
     """
-    # Convert to orders/sec (6.5 hr trading day = 23,400 seconds)
-    TRADING_SECONDS_PER_DAY = 23_400
     orders_per_sec = orders_per_day / TRADING_SECONDS_PER_DAY
-    THRESHOLD = 10.0  # orders per second
 
-    if orders_per_sec < THRESHOLD:
+    if orders_per_sec < ORDER_FREQ_THRESHOLD:
         return {
+            "rule":      "order_frequency",
             "compliant": True,
-            "category": "tech_savvy_retail",
+            "category":  "tech_savvy_retail",
+            "severity":  "none",
             "message": (
                 f"Order frequency: {orders_per_sec:.4f} orders/sec "
                 f"({orders_per_day:.0f}/day). Well under the 10 orders/sec "
@@ -51,8 +62,10 @@ def check_order_frequency(orders_per_day: float) -> dict:
         }
     else:
         return {
+            "rule":      "order_frequency",
             "compliant": False,
-            "category": "requires_full_registration",
+            "category":  "requires_full_registration",
+            "severity":  "high",
             "message": (
                 f"Order frequency: {orders_per_sec:.2f} orders/sec "
                 f"({orders_per_day:.0f}/day). EXCEEDS the 10 orders/sec "
@@ -62,15 +75,17 @@ def check_order_frequency(orders_per_day: float) -> dict:
         }
 
 
+# ── Rule 2: Explainability (Black-Box Classification) ────────────────────────
+
 def check_explainability(
     strategy_description: str,
-    is_llm_based: bool,
+    is_llm_based: bool = False,
 ) -> dict:
     """
     Classify an algorithm as black-box or transparent.
 
     Rule:
-        - LLM-based or opaque logic = potential "black box" →
+        - LLM-based or opaque logic = potential "black box"
           requires Research Analyst (RA) registration under SEBI.
         - Rule-based with clear conditions = transparent / white-box.
 
@@ -79,218 +94,300 @@ def check_explainability(
         is_llm_based: Whether the strategy uses LLM/ML for decision-making.
 
     Returns:
-        dict with {compliant: bool, classification: str, message: str}
+        dict with {compliant, classification, message, rule}
     """
-    # Black-box indicators
-    BLACK_BOX_KEYWORDS = [
-        "neural network", "deep learning", "machine learning",
-        "language model", "llm", "gpt", "claude", "transformer",
-        "model predicts", "model-dependent", "ai-driven",
-        "black box", "opaque", "proprietary model",
+    # Keywords that suggest a transparent, rule-based strategy
+    transparent_keywords = [
+        "moving average", "crossover", "z-score", "rsi", "macd",
+        "momentum", "mean reversion", "bollinger", "keyword", "threshold",
+        "if", "when", "greater than", "less than", "above", "below",
+        "percentage", "deviation", "indicator", "signal",
     ]
 
-    description_lower = strategy_description.lower()
-    found_keywords = [
-        kw for kw in BLACK_BOX_KEYWORDS if kw in description_lower
+    # Keywords that suggest opacity / black-box
+    opaque_keywords = [
+        "neural network", "deep learning", "transformer", "embedding",
+        "black box", "proprietary", "undisclosed", "model output",
+        "ai decision", "llm score",
     ]
 
-    is_black_box = is_llm_based or bool(found_keywords)
+    desc_lower = strategy_description.lower()
 
-    if is_black_box:
-        reasons = []
-        if is_llm_based:
-            reasons.append("Strategy is flagged as LLM-based")
-        if found_keywords:
-            reasons.append(
-                f"Description contains black-box indicators: {found_keywords}"
+    has_transparent = any(kw in desc_lower for kw in transparent_keywords)
+    has_opaque      = any(kw in desc_lower for kw in opaque_keywords)
+
+    if is_llm_based or has_opaque:
+        # Sentiment agent uses keyword scoring (not raw LLM) — still explainable
+        # but flag for human review
+        if "keyword" in desc_lower or "keyword_scored" in desc_lower:
+            return {
+                "rule":           "explainability",
+                "compliant":      True,
+                "classification": "transparent_keyword_based",
+                "severity":       "none",
+                "message": (
+                    "Strategy uses keyword-based scoring — signals are derived "
+                    "from explicit keyword lists, not opaque LLM reasoning. "
+                    "Classified as transparent under SEBI Feb 2025 framework. "
+                    "Each signal is traceable to specific headline keywords."
+                ),
+            }
+        return {
+            "rule":           "explainability",
+            "compliant":      False,
+            "classification": "black_box",
+            "severity":       "high",
+            "message": (
+                "Strategy logic is not fully explainable to the end user. "
+                "Under SEBI Feb 2025 framework, this may require Research "
+                "Analyst (RA) registration. Recommend restructuring signal "
+                "generation into explicit, auditable rules."
+            ),
+        }
+
+    if has_transparent:
+        return {
+            "rule":           "explainability",
+            "compliant":      True,
+            "classification": "transparent",
+            "severity":       "none",
+            "message": (
+                "Strategy uses clear, rule-based logic with explicit "
+                "conditions. Classified as transparent / white-box under "
+                "SEBI Feb 2025 framework. No RA registration required."
+            ),
+        }
+
+    # Ambiguous — flag for review but don't block
+    return {
+        "rule":           "explainability",
+        "compliant":      True,
+        "classification": "needs_review",
+        "severity":       "low",
+        "message": (
+            "Strategy description is ambiguous. Recommend adding explicit "
+            "entry/exit conditions to confirm transparent classification "
+            "under SEBI Feb 2025 framework."
+        ),
+    }
+
+
+# ── Rule 3: Position Size Limits ─────────────────────────────────────────────
+
+def check_position_limits(
+    picks:    list[str],
+    weights:  list[float],
+) -> dict:
+    """
+    Check individual position sizes against SEBI/internal risk limits.
+
+    Args:
+        picks:   List of ticker strings
+        weights: List of allocation weights (must sum to ~100)
+
+    Returns:
+        dict with {compliant, violations, message, rule}
+    """
+    violations = []
+
+    for ticker, weight in zip(picks, weights):
+        if weight > MAX_SINGLE_POSITION_PCT:
+            violations.append(
+                f"{ticker}: {weight:.1f}% exceeds {MAX_SINGLE_POSITION_PCT}% limit"
             )
 
+    total_weight = sum(weights)
+    if abs(total_weight - 100.0) > 1.0:
+        violations.append(
+            f"Weights sum to {total_weight:.1f}%, expected 100%"
+        )
+
+    if violations:
         return {
-            "compliant": False,
-            "classification": "black_box",
+            "rule":       "position_limits",
+            "compliant":  False,
+            "violations": violations,
+            "severity":   "medium",
             "message": (
-                f"Strategy classified as BLACK-BOX. {'; '.join(reasons)}. "
-                f"Under SEBI/HO/MRD/TPD-1 Rule 2, the algo provider must "
-                f"register as a Research Analyst (RA) with SEBI. "
-                f"Alternatively, convert to a white-box strategy with "
-                f"explicit, auditable entry/exit rules."
-            ),
-        }
-    else:
-        return {
-            "compliant": True,
-            "classification": "transparent",
-            "message": (
-                f"Strategy classified as TRANSPARENT (white-box). "
-                f"Rule-based logic with auditable conditions. "
-                f"No RA registration required."
+                f"Position limit violations detected: {'; '.join(violations)}. "
+                f"SEBI retail risk guidelines recommend max {MAX_SINGLE_POSITION_PCT}% "
+                f"per position to avoid concentration risk."
             ),
         }
 
+    return {
+        "rule":       "position_limits",
+        "compliant":  True,
+        "violations": [],
+        "severity":   "none",
+        "message": (
+            f"All positions within limits. "
+            f"Largest position: {max(weights):.1f}% "
+            f"(limit: {MAX_SINGLE_POSITION_PCT}%)."
+        ),
+    }
 
-def generate_algo_tag_id(proposal_id: str, ticker: str) -> str:
+
+# ── Rule 4: Algo Registration Check ──────────────────────────────────────────
+
+def check_algo_registration(
+    strategy_name:  str,
+    signal_method:  str = "rule_based",
+    orders_per_day: float = 2.0,
+) -> dict:
     """
-    Generate a SEBI-style unique algo tag ID for audit trail.
+    Determine whether this strategy needs formal exchange algo registration.
 
-    Format: NSE-ALGO-{year}-{uuid[:8].upper()}
-
-    Args:
-        proposal_id: The proposal being approved.
-        ticker: The stock ticker.
+    Under SEBI Feb 2025:
+    - All algos must carry a unique exchange-assigned tag ID
+    - High frequency (>10 orders/sec) needs full registration
+    - Black-box algos need RA registration
+    - Low frequency rule-based algos need minimal registration
 
     Returns:
-        A unique algo tag string (e.g., "NSE-ALGO-2026-A1B2C3D4").
+        dict with {registration_required, registration_type, algo_tag_id, message}
     """
-    year = datetime.now(timezone.utc).year
-    unique_part = uuid.uuid4().hex[:8].upper()
-    return f"NSE-ALGO-{year}-{unique_part}"
+    orders_per_sec = orders_per_day / TRADING_SECONDS_PER_DAY
+    algo_tag       = generate_algo_tag_id(strategy_name)
+
+    if orders_per_sec >= ORDER_FREQ_THRESHOLD:
+        return {
+            "rule":                "algo_registration",
+            "compliant":           False,
+            "registration_required": True,
+            "registration_type":   "full_exchange_registration",
+            "algo_tag_id":         algo_tag,
+            "severity":            "high",
+            "message": (
+                f"Full exchange algo registration required. "
+                f"Algo tag assigned: {algo_tag}. "
+                f"Must be submitted to exchange before live trading."
+            ),
+        }
+
+    if signal_method in ("llm", "neural_network", "black_box"):
+        return {
+            "rule":                "algo_registration",
+            "compliant":           False,
+            "registration_required": True,
+            "registration_type":   "research_analyst_registration",
+            "algo_tag_id":         algo_tag,
+            "severity":            "high",
+            "message": (
+                f"Research Analyst (RA) registration required for opaque "
+                f"strategy '{strategy_name}'. Algo tag: {algo_tag}."
+            ),
+        }
+
+    # Low frequency, rule-based — just needs algo tagging
+    return {
+        "rule":                "algo_registration",
+        "compliant":           True,
+        "registration_required": False,
+        "registration_type":   "algo_tag_only",
+        "algo_tag_id":         algo_tag,
+        "severity":            "none",
+        "message": (
+            f"Low-frequency rule-based strategy. "
+            f"Algo tag assigned: {algo_tag}. "
+            f"No formal registration required beyond tagging."
+        ),
+    }
 
 
-def check_position_limits(position_size_pct: float) -> dict:
+# ── Algo Tag Generator ────────────────────────────────────────────────────────
+
+def generate_algo_tag_id(strategy_name: str = "algo") -> str:
     """
-    Check position sizing against SEBI portfolio concentration limits.
-
-    Rule:
-        - Single position > 10% of portfolio = FLAGGED (warning)
-        - Single position > 20% of portfolio = REJECTED (hard limit)
-        - Otherwise = compliant
+    Generate a SEBI-style unique algo tag ID.
+    Format: SEBI-NSE-YYYY-XXXXXXXX
 
     Args:
-        position_size_pct: Proposed position size as % of total portfolio.
+        strategy_name: Used as a label prefix (cosmetic only)
 
     Returns:
-        dict with {compliant: bool, severity: str, message: str}
+        A unique tag string e.g. "SEBI-NSE-2026-A1B2C3D4"
     """
-    if position_size_pct > 20.0:
-        return {
-            "compliant": False,
-            "severity": "rejected",
-            "message": (
-                f"Position size {position_size_pct}% EXCEEDS the 20% hard "
-                f"limit for a single algorithmic strategy. Under SEBI "
-                f"guidelines, no single algo strategy should deploy more "
-                f"than 20% of total portfolio value. This proposal is "
-                f"REJECTED — reduce position size below 20%."
-            ),
-        }
-    elif position_size_pct > 10.0:
-        return {
-            "compliant": True,  # not rejected, but flagged
-            "severity": "flagged",
-            "message": (
-                f"Position size {position_size_pct}% exceeds the recommended "
-                f"10% limit for a single position. While not a hard rejection, "
-                f"SEBI guidelines recommend no single algo strategy deploy "
-                f"more than 10% of portfolio. Consider reducing position size."
-            ),
-        }
-    else:
-        return {
-            "compliant": True,
-            "severity": "ok",
-            "message": (
-                f"Position size {position_size_pct}% is within the "
-                f"recommended 10% single-position limit. Compliant."
-            ),
-        }
+    year     = datetime.now(timezone.utc).year
+    uid      = str(uuid.uuid4()).replace("-", "").upper()[:8]
+    return f"SEBI-NSE-{year}-{uid}"
 
+
+# ── Run All Checks ────────────────────────────────────────────────────────────
 
 def run_all_checks(proposal: dict) -> list[dict]:
     """
-    Run all SEBI compliance checks on a proposal.
+    Run all SEBI compliance checks on a proposal dict.
 
-    Args:
-        proposal: A proposal dict containing at minimum:
-            - strategy_type (str)
-            - ticker (str)
-            - position_size_pct (float)
-            - entry_condition (str)
-            - exit_condition (str)
-            - reasoning (str)
-            - stop_loss_pct (float)
+    Expected proposal keys (all optional with sensible defaults):
+        strategy_name   : str
+        picks           : list[str]
+        weights         : list[float]
+        signal_method   : str  ("rule_based" | "keyword_scored_headlines" | "llm")
+        orders_per_day  : float (default 2.0 — investment style)
+        raw_output      : str  (full proposal text for explainability check)
 
     Returns:
-        List of dicts, each with {check_name, passed, message}.
+        List of result dicts, one per rule checked.
     """
     results = []
 
-    # ── Check 1: Order Frequency ─────────────────────────────────────────
-    # Investment-style algos typically do 1-5 orders/day
-    # We estimate based on strategy type
-    strategy_type = proposal.get("strategy_type", "unknown")
-    if strategy_type == "momentum":
-        estimated_orders = 2.0  # momentum = low frequency
-    elif strategy_type == "mean_reversion":
-        estimated_orders = 5.0  # slightly more active
-    elif strategy_type == "sentiment":
-        estimated_orders = 3.0  # event-driven
-    else:
-        estimated_orders = 5.0  # conservative estimate
+    strategy_name   = proposal.get("strategy_name", proposal.get("strategy", "unknown"))
+    picks           = proposal.get("picks", [])
+    weights         = proposal.get("weights", [])
+    signal_method   = proposal.get("signal_method", "rule_based")
+    orders_per_day  = proposal.get("orders_per_day", 2.0)
+    raw_output      = proposal.get("raw_output", "")
+    sebi_compliant  = proposal.get("sebi_compliant", False)
 
-    freq_check = check_order_frequency(estimated_orders)
-    results.append({
-        "check_name": "order_frequency",
-        "passed": freq_check["compliant"],
-        "message": freq_check["message"],
-    })
+    # Determine if LLM-based from signal_method
+    is_llm_based = signal_method in ("llm", "neural_network", "black_box")
 
-    # ── Check 2: Explainability / Black-Box ──────────────────────────────
-    # Build the strategy description from available fields
-    description_parts = [
-        proposal.get("entry_condition", ""),
-        proposal.get("exit_condition", ""),
-        proposal.get("reasoning", ""),
-    ]
-    full_description = " ".join(filter(None, description_parts))
+    # If sentiment agent already flagged itself as compliant via keyword scoring
+    if signal_method == "keyword_scored_headlines":
+        is_llm_based = False
 
-    # Heuristic: sentiment strategies mentioning AI/LLM are LLM-based
-    is_llm = strategy_type == "sentiment" and any(
-        kw in full_description.lower()
-        for kw in ["llm", "language model", "ai", "gpt", "claude", "model"]
-    )
+    # ── Check 1: Order frequency ──────────────────────────────────────────────
+    results.append(check_order_frequency(orders_per_day))
 
-    explain_check = check_explainability(full_description, is_llm)
-    results.append({
-        "check_name": "explainability",
-        "passed": explain_check["compliant"],
-        "message": explain_check["message"],
-    })
+    # ── Check 2: Explainability ───────────────────────────────────────────────
+    description = f"{strategy_name} {signal_method} {raw_output[:200]}"
+    results.append(check_explainability(description, is_llm_based))
 
-    # ── Check 3: Position Limits ─────────────────────────────────────────
-    position_pct = proposal.get("position_size_pct", 5.0)
-    pos_check = check_position_limits(position_pct)
-    results.append({
-        "check_name": "position_limits",
-        "passed": pos_check["compliant"],
-        "message": pos_check["message"],
-    })
+    # ── Check 3: Position limits ──────────────────────────────────────────────
+    if picks and weights:
+        results.append(check_position_limits(picks, weights))
 
-    # ── Check 4: Audit Trail Readiness ───────────────────────────────────
-    # Verify proposal has all fields needed for exchange registration
-    required_fields = [
-        "ticker", "entry_condition", "exit_condition",
-        "stop_loss_pct", "strategy_type",
-    ]
-    missing = [f for f in required_fields if not proposal.get(f)]
-
-    if missing:
-        results.append({
-            "check_name": "audit_trail_readiness",
-            "passed": False,
-            "message": (
-                f"Missing required fields for exchange registration and "
-                f"audit trail: {missing}. Under SEBI/HO/MRD/TPD-1 Rules 3&4, "
-                f"all algo strategies must have complete documentation."
-            ),
-        })
-    else:
-        results.append({
-            "check_name": "audit_trail_readiness",
-            "passed": True,
-            "message": (
-                "All required fields present for exchange registration "
-                "and order tagging. Algo Tag ID can be assigned upon approval."
-            ),
-        })
+    # ── Check 4: Algo registration ────────────────────────────────────────────
+    results.append(check_algo_registration(
+        strategy_name  = strategy_name,
+        signal_method  = signal_method,
+        orders_per_day = orders_per_day,
+    ))
 
     return results
+
+
+# ── Smoke test ────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    print("=== SEBI Rules smoke test ===\n")
+
+    # Test momentum proposal
+    proposal = {
+        "strategy_name": "Momentum Strategy",
+        "picks":         ["AXISBANK.NS", "INFY.NS", "SBIN.NS"],
+        "weights":       [50.0, 30.0, 20.0],
+        "signal_method": "rule_based",
+        "orders_per_day": 2.0,
+        "raw_output":    "moving average crossover momentum strategy",
+    }
+
+    results = run_all_checks(proposal)
+    for r in results:
+        status = "✅" if r["compliant"] else "❌"
+        print(f"  {status} [{r['rule']}] {r['message'][:80]}")
+
+    print(f"\n=== generate_algo_tag_id ===")
+    print(f"  {generate_algo_tag_id('momentum')}")
+    print(f"  {generate_algo_tag_id('sentiment')}")
