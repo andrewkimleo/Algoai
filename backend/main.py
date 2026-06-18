@@ -30,6 +30,19 @@ import yaml
 from datetime import datetime
 from dotenv import load_dotenv
 
+import litellm
+
+# --- MONKEY PATCH LITELLM TO FIX CREWAI CACHE_BREAKPOINT BUG ---
+original_completion = litellm.completion
+def patched_completion(*args, **kwargs):
+    if "messages" in kwargs:
+        for msg in kwargs["messages"]:
+            if isinstance(msg, dict):
+                msg.pop("cache_breakpoint", None)
+    return original_completion(*args, **kwargs)
+litellm.completion = patched_completion
+# ---------------------------------------------------------------
+
 # ── Load .env first, before anything else ────────────────────────────────────
 load_dotenv()
 
@@ -79,13 +92,13 @@ def create_band_room(orchestrator_api_key: str, room_name: str) -> str:
 def add_participant(orchestrator_api_key: str, chat_id: str, agent_id: str, agent_name: str):
     """Add an agent as a participant to the Band room."""
     url  = f"{BAND_BASE_URL}/api/v1/agent/chats/{chat_id}/participants"
-    body = {"participant": {"id": agent_id}}
+    body = {"participant": {"participant_id": agent_id}}
 
     resp = requests.post(url, headers=band_headers(orchestrator_api_key), json=body)
     if resp.status_code in (201, 200):
         print(f"[main]   + Added participant: {agent_name}")
     else:
-        print(f"[main]   ⚠ Could not add {agent_name}: {resp.status_code} {resp.text[:80]}")
+        print(f"[main]   ⚠ Could not add {agent_name}: {resp.status_code} {resp.text}")
 
 
 def post_to_band(api_key: str, chat_id: str, band_msg: BandMessage, mentions: list = None):
@@ -96,15 +109,10 @@ def post_to_band(api_key: str, chat_id: str, band_msg: BandMessage, mentions: li
         f"```json\n{band_msg.model_dump_json(indent=2)}\n```"
     )
 
-    # Get the sender's registered Band agent ID
-    # Each agent must mention a DIFFERENT agent (not itself)
-    # Use a fixed "orchestrator" agent ID for all mentions
-    orchestrator_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID", "")
-
     body = {
         "message": {
             "content": full_content,
-            "mentions": [{"id": orchestrator_id}] if orchestrator_id else [],
+            "mentions": mentions if mentions else [{"id": "00000000-0000-0000-0000-000000000000"}]
         }
     }
 
@@ -238,6 +246,20 @@ def main():
         try:
             chat_id = create_band_room(orchestrator_key, room_cfg["name"])
             time.sleep(0.5)
+            
+            # --- Integrate Band Agents ---
+            # Add all configured agents to the Band room as participants
+            for agent in all_agents:
+                # Check for either <AGENT_NAME>_ID or BAND_<AGENT_NAME>_ID in .env
+                agent_id_key1 = f"{agent['name'].upper()}_ID"
+                agent_id_key2 = f"BAND_{agent['name'].upper()}_ID"
+                agent_id = os.getenv(agent_id_key1) or os.getenv(agent_id_key2)
+                
+                if agent_id:
+                    add_participant(orchestrator_key, chat_id, agent_id, agent["display_name"])
+                    time.sleep(0.2)
+            # -----------------------------
+            
         except Exception as e:
             print(f"[main] ⚠ Could not create Band room: {e}")
             print(f"[main]   Continuing without Band posting.")
@@ -264,10 +286,24 @@ def main():
 
         # Post to Band room
         if chat_id and agent_api_keys.get(agent_cfg["name"]):
+            # Find an ID to mention (Band requires 1-5 mentions). Pick another agent to avoid self-mention.
+            mention_id = None
+            for other_a in all_agents:
+                if other_a["name"] != agent_cfg["name"]:
+                    val = os.getenv(f"{other_a['name'].upper()}_ID") or os.getenv(f"BAND_{other_a['name'].upper()}_ID")
+                    if val:
+                        mention_id = val
+                        break
+            if not mention_id:
+                mention_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID")
+
+            mentions = [{"id": mention_id}] if mention_id else [{"id": "00000000-0000-0000-0000-000000000000"}]
+
             post_to_band(
                 api_key  = agent_api_keys[agent_cfg["name"]],
                 chat_id  = chat_id,
                 band_msg = band_msg,
+                mentions = mentions
             )
             time.sleep(1)   # small delay between posts
 
@@ -293,10 +329,24 @@ def main():
 
             # Post to Band room
             if chat_id and agent_api_keys.get(agent_cfg["name"]):
+                # Find an ID to mention (Band requires 1-5 mentions). Pick another agent to avoid self-mention.
+                mention_id = None
+                for other_a in all_agents:
+                    if other_a["name"] != agent_cfg["name"]:
+                        val = os.getenv(f"{other_a['name'].upper()}_ID") or os.getenv(f"BAND_{other_a['name'].upper()}_ID")
+                        if val:
+                            mention_id = val
+                            break
+                if not mention_id:
+                    mention_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID")
+
+                mentions = [{"id": mention_id}] if mention_id else [{"id": "00000000-0000-0000-0000-000000000000"}]
+
                 post_to_band(
                     api_key  = agent_api_keys[agent_cfg["name"]],
                     chat_id  = chat_id,
                     band_msg = band_msg,
+                    mentions = mentions
                 )
                 time.sleep(1)
 

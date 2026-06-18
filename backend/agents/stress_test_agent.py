@@ -15,6 +15,7 @@ For each proposal:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -30,6 +31,7 @@ from band.message_schema import (
     ChallengeResolved,
     StressTestResult,
     Proposal,
+    BandMessage,
 )
 
 logger = logging.getLogger(__name__)
@@ -198,15 +200,15 @@ class StressTestAgent:
         self._state: dict[str, dict] = {}  # proposal_id → {status, challenge_id, rounds}
 
         # CrewAI agent setup
-        import os
         from crewai import LLM
+        import litellm
+        litellm.drop_params = True
+        
         api_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
         
-        # Use OpenAI-compatible endpoint to bypass LiteLLM's Groq cache_breakpoint bug
         self.llm = LLM(
-            model="openai/llama-3.3-70b-versatile",
+            model="groq/llama-3.3-70b-versatile",
             api_key=api_key,
-            base_url="https://api.groq.com/openai/v1",
             temperature=0.3
         )
 
@@ -324,9 +326,10 @@ class StressTestAgent:
             severity=severity,
         )
 
-        await self.room_manager.post_message(
-            challenge.model_dump(), sender_id=self.agent_id
-        )
+        if self.room_manager:
+            await self.room_manager.post_message(
+                challenge.model_dump(), sender_id=self.agent_id
+            )
 
         self._state[proposal_id]["challenge_id"] = challenge.challenge_id
         self._state[proposal_id]["status"] = "challenged"
@@ -378,9 +381,10 @@ class StressTestAgent:
                 ),
             )
 
-            await self.room_manager.post_message(
-                resolved.model_dump(), sender_id=self.agent_id
-            )
+            if self.room_manager:
+                await self.room_manager.post_message(
+                    resolved.model_dump(), sender_id=self.agent_id
+                )
 
             state["status"] = "resolved"
             logger.info(f"[{self.agent_id}] Challenge resolved for {proposal_id}")

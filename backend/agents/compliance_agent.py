@@ -27,6 +27,7 @@ from band.room_manager import BandRoomManager
 from band.message_schema import (
     ComplianceVerdict,
     ComplianceCheckResult,
+    BandMessage,
 )
 from tools.sebi_rules import run_all_checks, generate_algo_tag_id
 from knowledge_base.rag_retriever import get_knowledge_base
@@ -106,10 +107,12 @@ class ComplianceAgent:
 
         api_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
         from crewai import LLM
+        import litellm
+        litellm.drop_params = True
+        
         self.llm = LLM(
-            model="openai/llama-3.3-70b-versatile",
+            model="groq/llama-3.3-70b-versatile",
             api_key=api_key,
-            base_url="https://api.groq.com/openai/v1",
             temperature=0.2
         )
 
@@ -230,7 +233,7 @@ class ComplianceAgent:
         if fail_count == 0:
             # All checks passed → APPROVED
             status = "approved"
-            algo_tag = generate_algo_tag_id(proposal_id, ticker)
+            algo_tag = generate_algo_tag_id(f"{proposal_id}-{ticker}")
             reasoning = (
                 f"All {len(checks_run)} SEBI compliance checks passed. "
                 f"Strategy approved for registration. Algo Tag: {algo_tag}"
@@ -274,9 +277,10 @@ class ComplianceAgent:
             algo_tag_id=algo_tag,
         )
 
-        await self.room_manager.post_message(
-            verdict.model_dump(), sender_id=self.agent_id
-        )
+        if self.room_manager:
+            await self.room_manager.post_message(
+                verdict.model_dump(), sender_id=self.agent_id
+            )
 
         logger.info(
             f"[{self.agent_id}] Verdict for {proposal_id}: {status} "
@@ -320,9 +324,10 @@ class ComplianceAgent:
                 required_action="Fundamental strategy redesign required.",
             )
 
-            await self.room_manager.post_message(
-                verdict.model_dump(), sender_id=self.agent_id
-            )
+            if self.room_manager:
+                await self.room_manager.post_message(
+                    verdict.model_dump(), sender_id=self.agent_id
+                )
 
             logger.warning(
                 f"[{self.agent_id}] Proposal {proposal_id} auto-rejected "

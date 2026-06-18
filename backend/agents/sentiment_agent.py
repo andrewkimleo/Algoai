@@ -34,7 +34,17 @@ from band.message_schema import make_proposal, BandMessage
 
 
 # ── Ticker → company name map (for readable display) ─────────────────────────
-llm = LLM(model="groq/llama-3.3-70b-versatile")
+from crewai import LLM
+import os
+import litellm
+
+litellm.drop_params = True
+api_key = os.getenv("GROQ_API_KEY", "")
+llm = LLM(
+    model="groq/llama-3.3-70b-versatile",
+    api_key=api_key,
+    temperature=0.3
+)
 
 TICKER_TO_COMPANY = {
     "RELIANCE.NS":  "Reliance Industries",

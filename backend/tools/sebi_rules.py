@@ -50,10 +50,10 @@ def check_order_frequency(orders_per_day: float) -> dict:
 
     if orders_per_sec < ORDER_FREQ_THRESHOLD:
         return {
-            "rule":      "order_frequency",
-            "compliant": True,
-            "category":  "tech_savvy_retail",
-            "severity":  "none",
+            "check_name": "order_frequency",
+            "passed":     True,
+            "category":   "tech_savvy_retail",
+            "severity":   "none",
             "message": (
                 f"Order frequency: {orders_per_sec:.4f} orders/sec "
                 f"({orders_per_day:.0f}/day). Well under the 10 orders/sec "
@@ -62,10 +62,10 @@ def check_order_frequency(orders_per_day: float) -> dict:
         }
     else:
         return {
-            "rule":      "order_frequency",
-            "compliant": False,
-            "category":  "requires_full_registration",
-            "severity":  "high",
+            "check_name": "order_frequency",
+            "passed":     False,
+            "category":   "requires_full_registration",
+            "severity":   "high",
             "message": (
                 f"Order frequency: {orders_per_sec:.2f} orders/sec "
                 f"({orders_per_day:.0f}/day). EXCEEDS the 10 orders/sec "
@@ -121,8 +121,8 @@ def check_explainability(
         # but flag for human review
         if "keyword" in desc_lower or "keyword_scored" in desc_lower:
             return {
-                "rule":           "explainability",
-                "compliant":      True,
+                "check_name":     "explainability",
+                "passed":         True,
                 "classification": "transparent_keyword_based",
                 "severity":       "none",
                 "message": (
@@ -133,8 +133,8 @@ def check_explainability(
                 ),
             }
         return {
-            "rule":           "explainability",
-            "compliant":      False,
+            "check_name":     "explainability",
+            "passed":         False,
             "classification": "black_box",
             "severity":       "high",
             "message": (
@@ -147,8 +147,8 @@ def check_explainability(
 
     if has_transparent:
         return {
-            "rule":           "explainability",
-            "compliant":      True,
+            "check_name":     "explainability",
+            "passed":         True,
             "classification": "transparent",
             "severity":       "none",
             "message": (
@@ -160,8 +160,8 @@ def check_explainability(
 
     # Ambiguous — flag for review but don't block
     return {
-        "rule":           "explainability",
-        "compliant":      True,
+        "check_name":     "explainability",
+        "passed":         True,
         "classification": "needs_review",
         "severity":       "low",
         "message": (
@@ -204,8 +204,8 @@ def check_position_limits(
 
     if violations:
         return {
-            "rule":       "position_limits",
-            "compliant":  False,
+            "check_name": "position_limits",
+            "passed":     False,
             "violations": violations,
             "severity":   "medium",
             "message": (
@@ -216,8 +216,8 @@ def check_position_limits(
         }
 
     return {
-        "rule":       "position_limits",
-        "compliant":  True,
+        "check_name": "position_limits",
+        "passed":     True,
         "violations": [],
         "severity":   "none",
         "message": (
@@ -252,8 +252,8 @@ def check_algo_registration(
 
     if orders_per_sec >= ORDER_FREQ_THRESHOLD:
         return {
-            "rule":                "algo_registration",
-            "compliant":           False,
+            "check_name":          "algo_registration",
+            "passed":              False,
             "registration_required": True,
             "registration_type":   "full_exchange_registration",
             "algo_tag_id":         algo_tag,
@@ -267,8 +267,8 @@ def check_algo_registration(
 
     if signal_method in ("llm", "neural_network", "black_box"):
         return {
-            "rule":                "algo_registration",
-            "compliant":           False,
+            "check_name":          "algo_registration",
+            "passed":              False,
             "registration_required": True,
             "registration_type":   "research_analyst_registration",
             "algo_tag_id":         algo_tag,
@@ -281,8 +281,8 @@ def check_algo_registration(
 
     # Low frequency, rule-based — just needs algo tagging
     return {
-        "rule":                "algo_registration",
-        "compliant":           True,
+        "check_name":          "algo_registration",
+        "passed":              True,
         "registration_required": False,
         "registration_type":   "algo_tag_only",
         "algo_tag_id":         algo_tag,
@@ -385,8 +385,8 @@ if __name__ == "__main__":
 
     results = run_all_checks(proposal)
     for r in results:
-        status = "✅" if r["compliant"] else "❌"
-        print(f"  {status} [{r['rule']}] {r['message'][:80]}")
+        status = "✅" if r["passed"] else "❌"
+        print(f"  {status} [{r['check_name']}] {r['message'][:80]}")
 
     print(f"\n=== generate_algo_tag_id ===")
     print(f"  {generate_algo_tag_id('momentum')}")

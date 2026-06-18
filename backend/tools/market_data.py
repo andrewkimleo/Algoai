@@ -16,7 +16,7 @@ Usage:
 
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -111,7 +111,7 @@ def _fetch_live(ticker: str, period: str) -> MarketDataResult:
         ticker=ticker,
         df=df,
         latest_price=float(df["close"].iloc[-1]),
-        fetched_at=datetime.utcnow().isoformat(),
+        fetched_at=datetime.now(timezone.utc).isoformat(),
         source="live",
     )
 
@@ -170,7 +170,7 @@ def _fetch_mock(ticker: str, period: str) -> MarketDataResult:
         ticker=ticker,
         df=df,
         latest_price=prices[-1],
-        fetched_at=datetime.utcnow().isoformat(),
+        fetched_at=datetime.now(timezone.utc).isoformat(),
         source="mock",
     )
 

@@ -31,6 +31,7 @@ from band.room_manager import BandRoomManager
 from band.message_schema import (
     FinalVerdict,
     AllocationItem,
+    BandMessage,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,10 +56,12 @@ class PortfolioArbiter:
 
         api_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
         from crewai import LLM
+        import litellm
+        litellm.drop_params = True
+        
         self.llm = LLM(
-            model="openai/llama-3.3-70b-versatile",
+            model="groq/llama-3.3-70b-versatile",
             api_key=api_key,
-            base_url="https://api.groq.com/openai/v1",
             temperature=0.2
         )
 
@@ -241,9 +244,10 @@ class PortfolioArbiter:
         )
 
         # Post to Band room
-        await self.room_manager.post_message(
-            verdict.model_dump(), sender_id=self.agent_id
-        )
+        if self.room_manager:
+            await self.room_manager.post_message(
+                verdict.model_dump(), sender_id=self.agent_id
+            )
 
         # Save audit trail
         self._save_audit_log(verdict, approved_proposals)
@@ -310,7 +314,7 @@ class PortfolioArbiter:
                 existing = {}
 
         # Build audit entries keyed by algo_tag_id
-        all_messages = self.room_manager.get_all_messages()
+        all_messages = self.room_manager.get_all_messages() if self.room_manager else []
 
         for alloc in verdict.allocations:
             if alloc.algo_tag_id:
