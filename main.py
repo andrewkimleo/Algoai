@@ -89,27 +89,22 @@ def add_participant(orchestrator_api_key: str, chat_id: str, agent_id: str, agen
 
 
 def post_to_band(api_key: str, chat_id: str, band_msg: BandMessage, mentions: list = None):
-    """
-    Post a BandMessage to the Band room.
-    The message content is the human-readable text.
-    The full JSON payload is appended as a structured block so other agents
-    (and the frontend) can parse it.
-
-    mentions: list of dicts with keys 'id', 'handle', 'name'
-              At least one mention is required by the Band API.
-    """
     url = f"{BAND_BASE_URL}/api/v1/agent/chats/{chat_id}/messages"
 
-    # Serialize the full message as a JSON block appended after the readable content
     full_content = (
         f"{band_msg.content}\n\n"
         f"```json\n{band_msg.model_dump_json(indent=2)}\n```"
     )
 
+    # Get the sender's registered Band agent ID
+    # Each agent must mention a DIFFERENT agent (not itself)
+    # Use a fixed "orchestrator" agent ID for all mentions
+    orchestrator_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID", "")
+
     body = {
         "message": {
-            "content":  full_content,
-            "mentions": mentions or [],
+            "content": full_content,
+            "mentions": [{"id": orchestrator_id}] if orchestrator_id else [],
         }
     }
 
@@ -121,7 +116,6 @@ def post_to_band(api_key: str, chat_id: str, band_msg: BandMessage, mentions: li
     else:
         print(f"[main]   ⚠ Band post failed ({resp.status_code}): {resp.text[:120]}")
         return None
-
 
 # ── Audit logger ──────────────────────────────────────────────────────────────
 
