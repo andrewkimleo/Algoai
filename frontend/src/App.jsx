@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { mockDebateSession } from './mockData';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 // Constants for UI mapping
 const AGENT_META = {
   momentum_agent: {
@@ -162,7 +164,7 @@ export default function App() {
     try {
       const tickerList = selectedTickers.split(",").map(t => t.trim().toUpperCase());
 
-      const response = await fetch("http://localhost:8000/api/start-session", {
+      const response = await fetch(`${API_BASE_URL}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tickers: tickerList })
@@ -178,7 +180,7 @@ export default function App() {
       addLog(`Session registered: ${session_id}. Launching agent workers in background task.`, "api");
 
       // Connect to Server Sent Events
-      const eventSource = new EventSource(`http://localhost:8000/api/session/${session_id}/stream`);
+      const eventSource = new EventSource(`${API_BASE_URL}/api/session/${session_id}/stream`);
       eventSourceRef.current = eventSource;
 
       // Track active listeners
