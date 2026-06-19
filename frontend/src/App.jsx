@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Cpu, 
-  ShieldCheck, 
-  AlertTriangle, 
-  TrendingUp, 
-  Terminal, 
-  Activity, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Cpu,
+  ShieldCheck,
+  AlertTriangle,
+  TrendingUp,
+  Terminal,
+  Activity,
+  CheckCircle2,
+  XCircle,
   Compass,
   ArrowRight,
   RefreshCw
@@ -85,12 +85,12 @@ export default function App() {
     let timer = null;
     if (mode === 'demo' && isPlaying) {
       const delay = 4000 / speed; // Base delay: 4 seconds divided by speed
-      
+
       timer = setTimeout(() => {
         const nextIndex = demoIndex + 1;
         if (nextIndex < mockDebateSession.messages.length) {
           const msg = mockDebateSession.messages[nextIndex];
-          
+
           // Add thinking phase logs before posting
           const agentMeta = AGENT_META[msg.sender] || { name: msg.sender };
           setConsoleLogs(prev => [
@@ -136,8 +136,8 @@ export default function App() {
     }
     setConsoleLogs([
       "[system] Session states reset.",
-      mode === 'demo' 
-        ? "[system] Ready for demo playback." 
+      mode === 'demo'
+        ? "[system] Ready for demo playback."
         : "[system] Ready to launch live quantitative debate session on local server."
     ]);
   };
@@ -158,20 +158,20 @@ export default function App() {
     handleReset();
     setIsLiveRunning(true);
     addLog("Triggering new live agent debate on FastAPI backend...", "api");
-    
+
     try {
       const tickerList = selectedTickers.split(",").map(t => t.trim().toUpperCase());
-      
+
       const response = await fetch("http://localhost:8000/api/start-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tickers: tickerList })
       });
-      
+
       if (!response.ok) {
         throw new Error(`Server returned HTTP ${response.status}: ${await response.text()}`);
       }
-      
+
       const data = await response.json();
       const { session_id } = data;
       setActiveSessionId(session_id);
@@ -185,7 +185,7 @@ export default function App() {
       eventSource.addEventListener('status_update', (e) => {
         const msg = JSON.parse(e.data);
         addLog(`Status: ${msg.content}`, "status");
-        
+
         // Update spinner state to show active thinking overlay
         setActiveSpinners(prev => ({
           ...prev,
@@ -259,21 +259,21 @@ export default function App() {
       <header className="app-header">
         <div className="brand">
           <div className="dot active"></div>
-          <h1>AlgoDesk <span style={{fontWeight: 300, color: 'var(--accent-cyan)'}}>// Quant Arena</span></h1>
+          <h1>AlgoDesk <span style={{ fontWeight: 300, color: 'var(--accent-cyan)' }}>// Quant Arena</span></h1>
         </div>
 
         <div className="controls-group">
           {/* Mode Switcher */}
           <div style={{ display: 'flex', gap: '0.25rem', padding: '0.25rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: 'var(--border-glass)' }}>
-            <button 
-              className={`btn ${mode === 'demo' ? 'btn-primary' : ''}`} 
+            <button
+              className={`btn ${mode === 'demo' ? 'btn-primary' : ''}`}
               style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: 'none' }}
               onClick={() => { setMode('demo'); handleReset(); }}
             >
               Demo Playback
             </button>
-            <button 
-              className={`btn ${mode === 'live' ? 'btn-primary' : ''}`} 
+            <button
+              className={`btn ${mode === 'live' ? 'btn-primary' : ''}`}
               style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: 'none' }}
               onClick={() => { setMode('live'); handleReset(); }}
             >
@@ -284,8 +284,8 @@ export default function App() {
           <div className="status-badge">
             <span className={`dot ${isPlaying ? 'running' : messages.length > 0 ? 'completed' : ''}`}></span>
             <span>
-              {mode === 'demo' 
-                ? (isPlaying ? "PLAYING DEMO" : "MOCK READY") 
+              {mode === 'demo'
+                ? (isPlaying ? "PLAYING DEMO" : "MOCK READY")
                 : (activeSessionId ? "SSE STREAM ACTIVE" : "SERVER DISCONNECTED")}
             </span>
           </div>
@@ -297,22 +297,22 @@ export default function App() {
         {mode === 'demo' ? (
           <>
             <div className="controls-group">
-              <button 
-                className="btn btn-primary" 
-                onClick={handleStartDemo} 
+              <button
+                className="btn btn-primary"
+                onClick={handleStartDemo}
                 disabled={isPlaying}
               >
                 <Play size={16} /> Play Demo Debate
               </button>
-              <button 
-                className="btn" 
-                onClick={() => setIsPlaying(false)} 
+              <button
+                className="btn"
+                onClick={() => setIsPlaying(false)}
                 disabled={!isPlaying}
               >
                 <Pause size={16} /> Pause
               </button>
-              <button 
-                className="btn btn-danger" 
+              <button
+                className="btn btn-danger"
                 onClick={handleReset}
               >
                 <RotateCcw size={16} /> Reset Timeline
@@ -321,9 +321,9 @@ export default function App() {
 
             <div className="controls-group">
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Playback Speed:</span>
-              <select 
-                className="select-input" 
-                value={speed} 
+              <select
+                className="select-input"
+                value={speed}
                 onChange={(e) => setSpeed(Number(e.target.value))}
               >
                 <option value={1}>1.0x (Standard)</option>
@@ -336,10 +336,10 @@ export default function App() {
           <>
             <div className="controls-group" style={{ flexGrow: 1, maxWidth: '500px' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Universe Tickers:</span>
-              <input 
-                type="text" 
-                className="select-input" 
-                style={{ flexGrow: 1, fontFamily: 'var(--font-mono)' }} 
+              <input
+                type="text"
+                className="select-input"
+                style={{ flexGrow: 1, fontFamily: 'var(--font-mono)' }}
                 value={selectedTickers}
                 onChange={(e) => setSelectedTickers(e.target.value)}
                 placeholder="RELIANCE, TATAMOTORS, INFY"
@@ -347,8 +347,8 @@ export default function App() {
             </div>
 
             <div className="controls-group">
-              <button 
-                className={`btn ${isLiveRunning ? 'btn-running' : 'btn-success'}`} 
+              <button
+                className={`btn ${isLiveRunning ? 'btn-running' : 'btn-success'}`}
                 onClick={handleStartLiveRun}
                 disabled={isLiveRunning}
               >
@@ -362,8 +362,8 @@ export default function App() {
                   </>
                 )}
               </button>
-              <button 
-                className="btn btn-danger" 
+              <button
+                className="btn btn-danger"
                 onClick={handleReset}
               >
                 <RotateCcw size={16} /> Clear Arena
@@ -385,7 +385,7 @@ export default function App() {
 
       {/* Main Arena Layout */}
       <div className="arena-grid">
-        
+
         {/* COLUMN 1: STRATEGY PROPOSALS */}
         <div className="phase-column">
           <div className="phase-header">
@@ -407,8 +407,8 @@ export default function App() {
             };
 
             return (
-              <div 
-                key={agentId} 
+              <div
+                key={agentId}
                 className={`glass-card animate-fade-in ${proposal ? 'glow-cyan' : ''}`}
                 style={{ position: 'relative', overflow: 'hidden' }}
               >
@@ -532,7 +532,7 @@ export default function App() {
                   </div>
                 );
               })}
-              
+
               {!messages.some(m => m.message_type === 'challenge') && !activeSpinners['stress_test_agent'] && (
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '1rem' }}>
                   No active challenge audits logged.
@@ -540,12 +540,12 @@ export default function App() {
               )}
             </div>
           </div>
-          
+
           {/* Display Defenses Logically linked to challenges */}
           <div className="phase-header" style={{ marginTop: '0.5rem' }}>
             <h3 className="phase-title" style={{ fontSize: '0.85rem' }}><ArrowRight size={14} className="text-purple" /> Active Defenses Logged</h3>
           </div>
-          
+
           {messages.filter(m => m.message_type === 'revision').map(rev => {
             const meta = AGENT_META[rev.sender] || { name: rev.sender, color: 'var(--accent-purple)' };
             return (
@@ -560,7 +560,7 @@ export default function App() {
               </div>
             );
           })}
-          
+
           {messages.filter(m => m.message_type === 'revision').length === 0 && (
             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '1rem', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: '8px' }}>
               Awaiting defense responses.
@@ -701,7 +701,7 @@ export default function App() {
             else if (log.startsWith("[thinking]")) className += " text-orange";
             else if (log.startsWith("[posted]")) className += " text-emerald";
             else if (log.startsWith("[error]")) className += " text-red";
-            
+
             return (
               <div key={index} className={className}>
                 <span className="terminal-prompt">&gt;</span>
@@ -711,7 +711,7 @@ export default function App() {
           })}
         </div>
       </div>
-      
+
       {/* Footer branding */}
       <footer style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: 'var(--border-glass)', paddingTop: '1rem' }}>
         AlgoDesk quant arena satisfies the SEBI Algorithmic Trading Framework (Feb 2025). Powered by CrewAI and FastAPI.
