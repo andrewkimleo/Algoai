@@ -105,15 +105,15 @@ class ComplianceAgent:
         self._revision_tracker: dict[str, int] = {}  # proposal_id → revision count
         self.max_revision_rounds = 2
 
-        api_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
+        api_key = os.getenv("GROQ_API_KEY_COMPLIANCE") or os.getenv("GROQ_API_KEY", "")
         from crewai import LLM
         import litellm
         litellm.drop_params = True
         
         self.llm = LLM(
-            model="groq/llama-3.3-70b-versatile",
+            model=os.getenv("MODEL_COMPLIANCE") or os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
             api_key=api_key,
-            temperature=0.2
+            temperature=0.0
         )
 
         self.rules_tool = SEBIRulesTool()
@@ -350,7 +350,7 @@ class ComplianceAgent:
 
 # ── Wrapper for main.py compatibility ────────────────────────────────────────
 
-def run_compliance_agent(proposals: list) -> "BandMessage":
+def run_compliance_agent(all_messages: list) -> "BandMessage":
     """
     Synchronous wrapper called by main.py.
     """
@@ -358,8 +358,15 @@ def run_compliance_agent(proposals: list) -> "BandMessage":
     from band.message_schema import BandMessage, make_compliance_verdict
 
     verdicts = []
+    
+    # Extract the most recent proposal or revision per strategy
+    latest_per_strategy = {}
+    for msg in all_messages:
+        if msg.message_type in ["proposal", "revision"]:
+            strategy = msg.payload.get("strategy", msg.sender)
+            latest_per_strategy[strategy] = msg
 
-    for proposal in proposals:
+    for strategy, proposal in latest_per_strategy.items():
         payload = proposal.payload or {}
         proposal_data = {
             "proposal_id":    proposal.message_id,
@@ -381,11 +388,11 @@ def run_compliance_agent(proposals: list) -> "BandMessage":
 
     # Return a summary compliance verdict BandMessage
     approved = len([v for v in verdicts if getattr(v, "status", "") == "approved"])
-    total    = len(proposals)
+    total    = len(latest_per_strategy)
 
     return make_compliance_verdict(
         sender="compliance_agent",
         target_strategy="all_proposals",
         status="approved" if approved == total else "flagged",
         reasoning=f"{approved}/{total} proposals passed SEBI compliance checks.",
-    )    
+    )

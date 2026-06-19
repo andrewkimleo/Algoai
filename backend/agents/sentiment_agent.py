@@ -39,9 +39,9 @@ import os
 import litellm
 
 litellm.drop_params = True
-api_key = os.getenv("GROQ_API_KEY", "")
+api_key = os.getenv("GROQ_API_KEY_SENTIMENT") or os.getenv("GROQ_API_KEY", "")
 llm = LLM(
-    model="groq/llama-3.3-70b-versatile",
+    model=os.getenv("MODEL_SENTIMENT") or os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
     api_key=api_key,
     temperature=0.3
 )
@@ -238,9 +238,11 @@ def proposal_to_band_message(crew_output: str) -> BandMessage:
         if line.startswith("PICKS:"):
             picks = [t.strip() for t in line.replace("PICKS:", "").split(",")]
         if line.startswith("WEIGHTS:"):
-            raw_w = line.replace("WEIGHTS:", "").replace("%", "").split(",")
+            import re
+            raw_w = line.replace("WEIGHTS:", "")
+            raw_w = re.sub(r'[^0-9.,]', '', raw_w).split(",")
             try:
-                weights = [float(w.strip()) for w in raw_w]
+                weights = [float(w.strip()) for w in raw_w if w.strip()]
             except ValueError:
                 weights = []
         if line.startswith("EXPLAINABILITY NOTE:"):
@@ -263,6 +265,82 @@ def proposal_to_band_message(crew_output: str) -> BandMessage:
         payload=payload,
     )
 
+
+# ── Defense ───────────────────────────────────────────────────────────────────
+
+def build_defense_task(agent: Agent, original_proposal: BandMessage, challenges: list[BandMessage]) -> Task:
+    challenges_text = "\n".join([c.content for c in challenges])
+    return Task(
+        description=(
+            f"You are defending your original Sentiment proposal against challenges from review agents.\n\n"
+            f"ORIGINAL PROPOSAL:\n{original_proposal.payload.get('raw_output', original_proposal.content)}\n\n"
+            f"CHALLENGES:\n{challenges_text}\n\n"
+            "Analyze the challenges. If they highlight valid risks, modify your picks or weights to reduce risk. "
+            "If you disagree with the challenge, defend your original picks.\n\n"
+            "You must output your final defense/revision in this exact format:\n\n"
+            "REVISION SUMMARY: <1-2 sentences explaining how you addressed the challenges>\n"
+            "STRATEGY: Sentiment\n"
+            "PICKS: <TICKER1>, <TICKER2>, <TICKER3>\n"
+            "WEIGHTS: <w1>%, <w2>%, <w3>%  (must sum to 100)\n"
+            "RATIONALE: <per pick: score + 2 quoted headlines + 1-sentence market implication>\n"
+            "RISK: <one sentence — e.g. sentiment can reverse rapidly on macro news>\n"
+            "EXPLAINABILITY NOTE: All signals derived from keyword-scored headlines "
+            "as required under SEBI Feb 2025 algo framework. No black-box model used.\n"
+        ),
+        expected_output="A structured defense and revised proposal.",
+        agent=agent,
+    )
+
+def defense_to_band_message(crew_output: str) -> BandMessage:
+    from band.message_schema import make_revision
+    payload = {"raw_output": crew_output, "strategy": "sentiment"}
+    
+    summary = "Defended proposal"
+    picks, weights = [], []
+    explainability_note = ""
+    for line in crew_output.splitlines():
+        if line.startswith("REVISION SUMMARY:"):
+            summary = line.replace("REVISION SUMMARY:", "").strip()
+        if line.startswith("PICKS:"):
+            picks = [t.strip() for t in line.replace("PICKS:", "").split(",")]
+        if line.startswith("WEIGHTS:"):
+            import re
+            raw_w = line.replace("WEIGHTS:", "")
+            raw_w = re.sub(r'[^0-9.,]', '', raw_w).split(",")
+            try:
+                weights = [float(w.strip()) for w in raw_w if w.strip()]
+            except ValueError:
+                weights = []
+        if line.startswith("EXPLAINABILITY NOTE:"):
+            explainability_note = line.replace("EXPLAINABILITY NOTE:", "").strip()
+                
+    if picks:
+        payload["picks"] = picks
+    if weights:
+        payload["weights"] = weights
+    if explainability_note:
+        payload["explainability_note"] = explainability_note
+        
+    return make_revision(
+        sender="sentiment_agent",
+        strategy_name="Sentiment Strategy",
+        changes=summary,
+        payload=payload,
+    )
+
+def run_defense_agent(original_proposal: BandMessage, challenges: list[BandMessage]) -> BandMessage:
+    agent = build_sentiment_agent()
+    task = build_defense_task(agent, original_proposal, challenges)
+    crew = Crew(agents=[agent], tasks=[task], verbose=True)
+    
+    print("[sentiment_agent] Starting defense crew run...")
+    result = crew.kickoff()
+    
+    output_text = str(result)
+    band_msg = defense_to_band_message(output_text)
+    
+    print(f"[sentiment_agent] Defense ready → {band_msg.content}")
+    return band_msg
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 

@@ -54,13 +54,13 @@ class PortfolioArbiter:
         self.agent_id = "portfolio_arbiter"
         self.total_exposure_limit = 15.0  # max 15% of portfolio
 
-        api_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
+        api_key = os.getenv("GROQ_API_KEY_ARBITER") or os.getenv("GROQ_API_KEY", "")
         from crewai import LLM
         import litellm
         litellm.drop_params = True
         
         self.llm = LLM(
-            model="groq/llama-3.3-70b-versatile",
+            model=os.getenv("MODEL_ARBITER") or os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
             api_key=api_key,
             temperature=0.2
         )
@@ -158,12 +158,13 @@ class PortfolioArbiter:
                 f"  - Rank by Sharpe ratio — higher Sharpe gets priority\n"
                 f"  - No single position > 10% of portfolio\n\n"
                 f"For each proposal, decide: approved allocation %, or reject. "
-                f"Explain your reasoning concisely."
+                f"Explain your reasoning concisely. DO NOT output markdown tables, pipe characters (|), or grid lines."
             ),
             expected_output=(
-                "For each proposal: proposal_id, final allocation %, "
-                "status (approved/reduced/rejected), and brief notes. "
-                "Also: total portfolio risk summary."
+                "A clean, human-readable bulleted list of final allocations. "
+                "For each strategy, list the proposal ID, ticker, allocation percentage, status, and a brief 1-sentence rationale. "
+                "End with a short summary of the overall portfolio risk. "
+                "Do not use markdown tables or pipe symbols."
             ),
             agent=self.crew_agent,
         )
@@ -173,7 +174,7 @@ class PortfolioArbiter:
         try:
             import asyncio
             crew_result = await asyncio.to_thread(crew.kickoff)
-            llm_reasoning = str(crew_result)[:500]
+            llm_reasoning = str(crew_result).strip()
         except Exception as e:
             logger.error(f"[{self.agent_id}] LLM arbitration failed: {e}")
             llm_reasoning = "LLM reasoning unavailable. Using rule-based allocation."
@@ -344,10 +345,9 @@ class PortfolioArbiter:
             logger.error(f"[{self.agent_id}] Failed to save audit log: {e}")
 
 
-
 # ── Wrapper for main.py compatibility ────────────────────────────────────────
 
-def run_portfolio_arbiter(proposals: list) -> "BandMessage":
+def run_portfolio_arbiter(all_messages: list) -> "BandMessage":
     """
     Synchronous wrapper called by main.py.
     """
@@ -355,7 +355,14 @@ def run_portfolio_arbiter(proposals: list) -> "BandMessage":
     from band.message_schema import BandMessage, make_final_verdict
 
     all_picks = []
-    for p in proposals:
+    
+    latest_per_strategy = {}
+    for msg in all_messages:
+        if msg.message_type in ["proposal", "revision"]:
+            strategy = msg.payload.get("strategy", msg.sender)
+            latest_per_strategy[strategy] = msg
+
+    for strategy, p in latest_per_strategy.items():
         payload = p.payload or {}
         all_picks.append({
             "proposal_id":   p.message_id,
@@ -369,16 +376,29 @@ def run_portfolio_arbiter(proposals: list) -> "BandMessage":
         arbiter = PortfolioArbiter(room_manager=None)
         result  = asyncio.run(arbiter.run_arbitration(all_picks))
         if result:
+            allocations_payload = []
+            for item in result.allocations:
+                pick_info = next((p for p in all_picks if p["proposal_id"] == item.proposal_id), {})
+                allocations_payload.append({
+                    "proposal_id":    item.proposal_id,
+                    "strategy":       pick_info.get("strategy", ""),
+                    "picks":          pick_info.get("picks", []),
+                    "weights":        pick_info.get("weights", []),
+                    "allocation_pct": item.allocation_pct,
+                    "status":         item.status,
+                    "sender":         pick_info.get("sender", "")
+                })
+
             return make_final_verdict(
                 sender="portfolio_arbiter",
-                allocations=all_picks,
-                reasoning=str(result)[:300],
+                allocations=allocations_payload,
+                reasoning=result.reasoning if result.reasoning else result.portfolio_risk_summary,
             )
     except Exception as e:
         print(f"[portfolio_arbiter] Warning: {e}")
 
     return make_final_verdict(
         sender="portfolio_arbiter",
-        allocations=all_picks,
-        reasoning=f"Portfolio arbiter reviewed {len(proposals)} proposals. Allocations based on momentum, mean-reversion, and sentiment signals with SEBI compliance.",
-    )            
+        allocations=[],
+        reasoning="Failed to arbitrate proposals.",
+    )

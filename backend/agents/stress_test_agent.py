@@ -204,10 +204,10 @@ class StressTestAgent:
         import litellm
         litellm.drop_params = True
         
-        api_key = groq_api_key or os.getenv("GROQ_API_KEY", "")
+        api_key = os.getenv("GROQ_API_KEY_STRESS_TEST") or os.getenv("GROQ_API_KEY", "")
         
         self.llm = LLM(
-            model="groq/llama-3.3-70b-versatile",
+            model=os.getenv("MODEL_STRESS_TEST") or os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
             api_key=api_key,
             temperature=0.3
         )

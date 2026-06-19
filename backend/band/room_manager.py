@@ -167,7 +167,7 @@ class BandRoomManager:
                 logger.error(f"Listener callback failed: {e}")
 
         if self.mock_mode:
-            msg_type = message.get("type", "unknown")
+            msg_type = message.get("message_type", "unknown")
             sender = sender_id or "unknown"
             logger.info(
                 f"[MOCK] [{sender}] → {msg_type}: "

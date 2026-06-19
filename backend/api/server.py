@@ -74,7 +74,15 @@ async def start_session(
 
     Body: { "tickers": ["RELIANCE", "TATAMOTORS", "INFY"] }
     """
-    from main import create_and_run_session
+    try:
+        from main import create_and_run_session
+    except ImportError:
+        import sys
+        import os
+        backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if backend_path not in sys.path:
+            sys.path.insert(0, backend_path)
+        from main import create_and_run_session
 
     tickers = request.tickers or ["RELIANCE", "TATAMOTORS", "INFY"]
     session_id = f"session_{uuid.uuid4().hex[:12]}"
@@ -124,7 +132,7 @@ async def stream_session(session_id: str):
             # First, send all existing messages as a catchup burst
             existing = room_manager.get_all_messages()
             for msg in existing:
-                event_type = msg.get("type", "message")
+                event_type = msg.get("message_type", "message")
                 data = json.dumps(msg, default=str)
                 yield f"event: {event_type}\ndata: {data}\n\n"
 
@@ -133,7 +141,7 @@ async def stream_session(session_id: str):
                 try:
                     # Wait for a new message, with a 15s timeout for heartbeat
                     msg = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    event_type = msg.get("type", "message")
+                    event_type = msg.get("message_type", "message")
                     data = json.dumps(msg, default=str)
                     yield f"event: {event_type}\ndata: {data}\n\n"
 
@@ -201,37 +209,38 @@ async def get_session_state(session_id: str):
     verdicts = {}
 
     for msg in messages:
-        msg_type = msg.get("type")
+        msg_type = msg.get("message_type")
+        payload = msg.get("payload") or {}
 
         if msg_type == "proposal":
-            pid = msg.get("proposal_id", "")
+            pid = msg.get("message_id", "")
             proposals[pid] = {
                 "proposal_id": pid,
-                "ticker": msg.get("ticker"),
-                "strategy_type": msg.get("strategy_type"),
-                "agent_name": msg.get("agent_name"),
+                "ticker": payload.get("ticker"),
+                "strategy_type": payload.get("strategy"),
+                "agent_name": msg.get("sender"),
                 "status": "open",
             }
 
         elif msg_type == "challenge":
-            pid = msg.get("target_proposal_id", "")
+            pid = payload.get("target_proposal_id", "")
             if pid in proposals:
                 proposals[pid]["status"] = "challenged"
-                challenges[pid] = msg.get("severity", "medium")
+                challenges[pid] = payload.get("severity", "medium")
 
         elif msg_type == "challenge_resolved":
-            pid = msg.get("target_proposal_id", "")
+            pid = payload.get("target_proposal_id", "")
             if pid in proposals:
                 proposals[pid]["status"] = "challenge_resolved"
 
         elif msg_type == "compliance_verdict":
-            pid = msg.get("target_proposal_id", "")
+            pid = payload.get("target_proposal_id", "")
             if pid in proposals:
-                proposals[pid]["status"] = f"compliance_{msg.get('status', 'unknown')}"
-                proposals[pid]["algo_tag_id"] = msg.get("algo_tag_id")
+                proposals[pid]["status"] = f"compliance_{payload.get('status', 'unknown')}"
+                proposals[pid]["algo_tag_id"] = payload.get("algo_tag_id")
 
         elif msg_type == "final_verdict":
-            for alloc in msg.get("allocations", []):
+            for alloc in payload.get("allocations", []):
                 pid = alloc.get("proposal_id", "")
                 if pid in proposals:
                     proposals[pid]["status"] = f"final_{alloc.get('status', 'unknown')}"

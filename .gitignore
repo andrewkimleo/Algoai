@@ -1,8 +1,13 @@
-
 # Environments
 .env
 .env.*
 !.env.example
+
+# Node / Javascript
+node_modules/
+dist/
+dist-ssr/
+*.local
 
 # Python
 __pycache__/
@@ -11,6 +16,9 @@ __pycache__/
 *.so
 .Python
 env/
+venv/
+.venv/
+.env/
 build/
 develop-eggs/
 dist/
@@ -28,28 +36,21 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
-# Virtual environments
-venv/
-.venv/
-env/
-.env/
+.crewai/
 
 # IDEs
 .vscode/
 .idea/
+*.suo
+*.ntvsca*
+*.njsproj
+*.sln
+*.sw?
 
-# Database / Storage
+# Database / Storage / Logs
 *.sqlite3
 chroma_db/
 audit_log.json
-
-@"
-.env
-venv/
-__pycache__/
-*.pyc
+backend/audit_log.json
 band/audit_log.json
-.crewai/
-"@ | Out-File -FilePath .gitignore -Encoding utf8
-
+*.log

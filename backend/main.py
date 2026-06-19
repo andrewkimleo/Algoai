@@ -44,7 +44,8 @@ litellm.completion = patched_completion
 # ---------------------------------------------------------------
 
 # ── Load .env first, before anything else ────────────────────────────────────
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -171,11 +172,27 @@ def run_agent(agent_cfg: dict) -> BandMessage | None:
         print(f"[main] ❌ {name} failed: {e}")
         return None
 
+def run_defense(agent_cfg: dict, original_proposal: BandMessage, challenges: list[BandMessage]) -> BandMessage | None:
+    module_path = agent_cfg["module"]
+    name        = agent_cfg["name"]
+    
+    try:
+        print(f"\n[main] 🛡️ Running defense for {name}...")
+        module = importlib.import_module(module_path)
+        fn     = getattr(module, "run_defense_agent")
+        result = fn(original_proposal, challenges)
+        print(f"[main] ✅ {name} defense completed.")
+        return result
 
-def run_review_agent(agent_cfg: dict, proposals: list[BandMessage]) -> BandMessage | None:
+    except Exception as e:
+        print(f"[main] ❌ {name} defense failed: {e}")
+        return None
+
+
+def run_review_agent(agent_cfg: dict, all_messages: list[BandMessage]) -> BandMessage | None:
     """
-    Run a review agent, passing all collected proposals as context.
-    Review agents (stress_test, compliance, arbiter) take proposals as input.
+    Run a review agent, passing all collected messages as context.
+    Review agents (stress_test, compliance, arbiter) take messages as input.
     """
     module_path = agent_cfg["module"]
     runner_fn   = agent_cfg["runner_fn"]
@@ -185,7 +202,7 @@ def run_review_agent(agent_cfg: dict, proposals: list[BandMessage]) -> BandMessa
         print(f"\n[main] 🔍 Running {name}...")
         module = importlib.import_module(module_path)
         fn     = getattr(module, runner_fn)
-        result = fn(proposals)          # review agents receive proposals list
+        result = fn(all_messages)          # review agents receive all_messages list
         print(f"[main] ✅ {name} completed.")
         return result
 
@@ -276,6 +293,9 @@ def main():
     proposals:      list[BandMessage] = []
 
     for agent_cfg in strategy_agents:
+        print(f"\n[main] ⏳ Waiting 20s for Groq API token bucket to refill...")
+        time.sleep(20)
+        
         band_msg = run_agent(agent_cfg)
 
         if band_msg is None:
@@ -313,14 +333,93 @@ def main():
         print("[main] ❌ No proposals generated. Exiting.")
         return
 
-    # ── Phase 2: Run review agents ────────────────────────────────────────────
+    # ── Phase 2: Challenges (Stress Test) ─────────────────────────────────────
     if not args.skip_review:
         print(f"\n{'─'*60}")
-        print(f"  PHASE 2 — Review, Challenge & Compliance")
+        print(f"  PHASE 2 — Stress Test Challenges")
         print(f"{'─'*60}")
 
-        for agent_cfg in review_agents:
-            band_msg = run_review_agent(agent_cfg, proposals)
+        stress_agent_cfg = next((a for a in review_agents if a["name"] == "stress_test_agent"), None)
+        if stress_agent_cfg:
+            print(f"\n[main] ⏳ Waiting 20s for Groq API token bucket to refill...")
+            time.sleep(20)
+            band_msg = run_review_agent(stress_agent_cfg, all_messages)
+            if band_msg:
+                all_messages.append(band_msg)
+                
+                # Post to Band room
+                if chat_id and agent_api_keys.get(stress_agent_cfg["name"]):
+                    mention_id = None
+                    for other_a in all_agents:
+                        if other_a["name"] != stress_agent_cfg["name"]:
+                            val = os.getenv(f"{other_a['name'].upper()}_ID") or os.getenv(f"BAND_{other_a['name'].upper()}_ID")
+                            if val:
+                                mention_id = val
+                                break
+                    if not mention_id:
+                        mention_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID")
+
+                    mentions = [{"id": mention_id}] if mention_id else [{"id": "00000000-0000-0000-0000-000000000000"}]
+                    post_to_band(
+                        api_key=agent_api_keys[stress_agent_cfg["name"]],
+                        chat_id=chat_id,
+                        band_msg=band_msg,
+                        mentions=mentions
+                    )
+                    time.sleep(1)
+
+    # ── Phase 3: Defenses ─────────────────────────────────────────────────────
+    if not args.skip_review:
+        print(f"\n{'─'*60}")
+        print(f"  PHASE 3 — Strategy Defenses")
+        print(f"{'─'*60}")
+        
+        for agent_cfg in strategy_agents:
+            # Find their original proposal
+            orig_prop = next((p for p in proposals if p.sender == agent_cfg["name"]), None)
+            if not orig_prop: continue
+            
+            # Find challenges targeting them
+            strategy_name = orig_prop.payload.get("strategy") if orig_prop.payload else orig_prop.sender
+            challenges = [m for m in all_messages if m.message_type == "challenge" and (m.payload or {}).get("target_strategy") == strategy_name]
+            
+            if challenges:
+                # Add a 60-second sleep to avoid hitting Groq's Tokens-Per-Minute rate limit
+                print(f"\n[main] ⏳ Waiting 60s to avoid API rate limits before running defense...")
+                time.sleep(60)
+                def_msg = run_defense(agent_cfg, orig_prop, challenges)
+                if def_msg:
+                    all_messages.append(def_msg)
+                    
+                    if chat_id and agent_api_keys.get(agent_cfg["name"]):
+                        mention_id = None
+                        for other_a in all_agents:
+                            if other_a["name"] != agent_cfg["name"]:
+                                val = os.getenv(f"{other_a['name'].upper()}_ID") or os.getenv(f"BAND_{other_a['name'].upper()}_ID")
+                                if val:
+                                    mention_id = val
+                                    break
+                        if not mention_id:
+                            mention_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID")
+
+                        mentions = [{"id": mention_id}] if mention_id else [{"id": "00000000-0000-0000-0000-000000000000"}]
+                        post_to_band(
+                            api_key=agent_api_keys[agent_cfg["name"]],
+                            chat_id=chat_id,
+                            band_msg=def_msg,
+                            mentions=mentions
+                        )
+                        time.sleep(1)
+
+    # ── Phase 4: Final Review (Compliance & Arbiter) ──────────────────────────
+    if not args.skip_review:
+        print(f"\n{'─'*60}")
+        print(f"  PHASE 4 — Compliance & Portfolio Arbiter")
+        print(f"{'─'*60}")
+
+        final_agents = [a for a in review_agents if a["name"] in ["compliance_agent", "portfolio_arbiter"]]
+        for agent_cfg in final_agents:
+            band_msg = run_review_agent(agent_cfg, all_messages)
 
             if band_msg is None:
                 continue
@@ -329,7 +428,6 @@ def main():
 
             # Post to Band room
             if chat_id and agent_api_keys.get(agent_cfg["name"]):
-                # Find an ID to mention (Band requires 1-5 mentions). Pick another agent to avoid self-mention.
                 mention_id = None
                 for other_a in all_agents:
                     if other_a["name"] != agent_cfg["name"]:
@@ -341,16 +439,14 @@ def main():
                     mention_id = os.getenv("BAND_ORCHESTRATOR_AGENT_ID")
 
                 mentions = [{"id": mention_id}] if mention_id else [{"id": "00000000-0000-0000-0000-000000000000"}]
-
                 post_to_band(
-                    api_key  = agent_api_keys[agent_cfg["name"]],
-                    chat_id  = chat_id,
-                    band_msg = band_msg,
-                    mentions = mentions
+                    api_key=agent_api_keys[agent_cfg["name"]],
+                    chat_id=chat_id,
+                    band_msg=band_msg,
+                    mentions=mentions
                 )
                 time.sleep(1)
 
-            # If this is a final verdict, we're done
             if band_msg.message_type == "final_verdict":
                 print(f"\n[main] 🏁 Final verdict received from {agent_cfg['name']}.")
                 break
@@ -385,7 +481,154 @@ def main():
         print(f"  {icon} [{msg.sender}] {msg.content[:70]}")
 
 
+# ── FastAPI / SSE Session Helpers ─────────────────────────────────────────────
+
+async def create_and_run_session(session_id: str, tickers: list[str], background_tasks):
+    """
+    Create a new AlgoDesk debate session asynchronously (FastAPI integration).
+    """
+    from band.room_manager import BandRoomManager
+    from api.server import register_session
+    
+    # 1. Create a Band room manager
+    room_manager = BandRoomManager(room_name=f"algodesk-{session_id}")
+    await room_manager.create_room()
+    
+    # 2. Register session so server endpoints can resolve it
+    register_session(session_id, {
+        "room_manager": room_manager,
+        "tickers": tickers,
+        "status": "running"
+    })
+    
+    # 3. Queue the background debate task
+    background_tasks.add_task(run_debate_pipeline_async, session_id, tickers, room_manager)
+    
+    return room_manager
+
+
+async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_manager):
+    """
+    Run the complete 4-phase debate pipeline in the background.
+    Communicates live updates to the frontend via the BandRoomManager queue.
+    """
+    import asyncio
+    from band.message_schema import make_status_update
+    from api.server import get_session_data
+    
+    # Load config and order agents
+    config = load_config()
+    all_agents = sorted(config["agents"], key=lambda a: a["run_order"])
+    
+    strategy_agents = [a for a in all_agents if a["role"] == "strategy" and a["enabled"]]
+    review_agents = [a for a in all_agents if a["role"] != "strategy" and a["enabled"]]
+    
+    # Mode overrides
+    mode = os.getenv("MARKET_DATA_MODE", "mock").lower()
+    is_mock = (mode == "mock")
+    
+    scan_sleep = 2.0 if is_mock else 20.0
+    defense_sleep = 3.0 if is_mock else 60.0
+    
+    all_messages = []
+    proposals = []
+    
+    # ── Phase 1: Strategy Proposals ──────────────────────────────────────────
+    for agent_cfg in strategy_agents:
+        # Post active thinking status update
+        status = make_status_update(
+            sender=agent_cfg["name"],
+            message=f"Momentum & returns scanner running for ticker universe..."
+        )
+        await room_manager.post_message(status.model_dump(), agent_cfg["name"])
+        
+        await asyncio.sleep(scan_sleep)
+        
+        # Execute agent runner in thread
+        band_msg = await asyncio.to_thread(run_agent, agent_cfg)
+        if band_msg:
+            proposals.append(band_msg)
+            all_messages.append(band_msg)
+            await room_manager.post_message(band_msg.model_dump(), agent_cfg["name"])
+            
+    if not proposals:
+        status = make_status_update(
+            sender="portfolio_arbiter",
+            message="No proposals were generated. Debate pipeline terminating."
+        )
+        await room_manager.post_message(status.model_dump(), "portfolio_arbiter")
+        sess = get_session_data(session_id)
+        if sess:
+            sess["status"] = "failed"
+        return
+        
+    # ── Phase 2: Stress Test Challenges ───────────────────────────────────────
+    stress_agent_cfg = next((a for a in review_agents if a["name"] == "stress_test_agent"), None)
+    if stress_agent_cfg:
+        status = make_status_update(
+            sender=stress_agent_cfg["name"],
+            message="Evaluating historical drawdown limit breaches and extreme market shocks..."
+        )
+        await room_manager.post_message(status.model_dump(), stress_agent_cfg["name"])
+        
+        await asyncio.sleep(scan_sleep)
+        
+        band_msg = await asyncio.to_thread(run_review_agent, stress_agent_cfg, all_messages)
+        if band_msg:
+            all_messages.append(band_msg)
+            await room_manager.post_message(band_msg.model_dump(), stress_agent_cfg["name"])
+            
+    # ── Phase 3: Strategy Defenses ───────────────────────────────────────────
+    for agent_cfg in strategy_agents:
+        orig_prop = next((p for p in proposals if p.sender == agent_cfg["name"]), None)
+        if not orig_prop:
+            continue
+            
+        strategy_name = orig_prop.payload.get("strategy") if orig_prop.payload else orig_prop.sender
+        challenges = [
+            m for m in all_messages 
+            if m.message_type == "challenge" and (m.payload or {}).get("target_strategy") == strategy_name
+        ]
+        
+        if challenges:
+            status = make_status_update(
+                sender=agent_cfg["name"],
+                message=f"Drafting quantitative defense and parameter revision in response to stress tests..."
+            )
+            await room_manager.post_message(status.model_dump(), agent_cfg["name"])
+            
+            await asyncio.sleep(defense_sleep)
+            
+            def_msg = await asyncio.to_thread(run_defense, agent_cfg, orig_prop, challenges)
+            if def_msg:
+                all_messages.append(def_msg)
+                await room_manager.post_message(def_msg.model_dump(), agent_cfg["name"])
+                
+    # ── Phase 4: Final Review (Compliance & Portfolio Arbiter) ───────────────
+    final_agents = [a for a in review_agents if a["name"] in ["compliance_agent", "portfolio_arbiter"]]
+    for agent_cfg in final_agents:
+        status = make_status_update(
+            sender=agent_cfg["name"],
+            message=f"Verifying regulatory standards and auditing allocations..." if agent_cfg["name"] == "compliance_agent" else "Synthesizing portfolio weights and checking correlation risk..."
+        )
+        await room_manager.post_message(status.model_dump(), agent_cfg["name"])
+        
+        await asyncio.sleep(scan_sleep)
+        
+        band_msg = await asyncio.to_thread(run_review_agent, agent_cfg, all_messages)
+        if band_msg:
+            all_messages.append(band_msg)
+            await room_manager.post_message(band_msg.model_dump(), agent_cfg["name"])
+            
+    # ── Save Audit Log & Complete ────────────────────────────────────────────
+    await asyncio.to_thread(save_audit_log, all_messages, session_id)
+    
+    sess = get_session_data(session_id)
+    if sess:
+        sess["status"] = "completed"
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    main()
+    main()
