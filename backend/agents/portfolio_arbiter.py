@@ -367,6 +367,8 @@ def run_portfolio_arbiter(all_messages: list) -> "BandMessage":
             strategy = msg.payload.get("strategy", msg.sender)
             latest_per_strategy[strategy] = msg
 
+    all_picks = []
+
     for strategy, p in latest_per_strategy.items():
         payload = p.payload or {}
         picks = payload.get("picks", [])

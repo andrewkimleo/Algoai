@@ -171,7 +171,7 @@ def sentiment_scanner(period: str = "recent") -> str:
 
 # ── Agent definition ──────────────────────────────────────────────────────────
 
-def build_sentiment_agent() -> Agent:
+def build_sentiment_agent(with_tools: bool = True) -> Agent:
     return Agent(
         role="Sentiment Strategy Analyst",
         llm=llm,
@@ -188,7 +188,7 @@ def build_sentiment_agent() -> Agent:
             "that triggered it — no black-box reasoning, no opaque scores. "
             "You are transparent, rigorous, and always show your evidence."
         ),
-        tools=[sentiment_scanner],
+        tools=[sentiment_scanner] if with_tools else [],
         verbose=True,
         allow_delegation=False,
     )
@@ -277,6 +277,8 @@ def build_defense_task(agent: Agent, original_proposal: BandMessage, challenges:
             f"CHALLENGES:\n{challenges_text}\n\n"
             "Analyze the challenges. If they highlight valid risks, modify your picks or weights to reduce risk. "
             "If you disagree with the challenge, defend your original picks.\n\n"
+            "CRITICAL: Do not attempt to use any tools or call functions. You do not have access to any external tools for this task. "
+            "Respond only with the text in the exact format requested below.\n\n"
             "You must output your final defense/revision in this exact format:\n\n"
             "REVISION SUMMARY: <1-2 sentences explaining how you addressed the challenges>\n"
             "STRATEGY: Sentiment\n"
@@ -329,7 +331,7 @@ def defense_to_band_message(crew_output: str) -> BandMessage:
     )
 
 def run_defense_agent(original_proposal: BandMessage, challenges: list[BandMessage]) -> BandMessage:
-    agent = build_sentiment_agent()
+    agent = build_sentiment_agent(with_tools=False)
     task = build_defense_task(agent, original_proposal, challenges)
     crew = Crew(agents=[agent], tasks=[task], verbose=True)
     
