@@ -13,7 +13,8 @@ import {
   XCircle,
   Compass,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { mockDebateSession } from './mockData';
 
@@ -59,6 +60,145 @@ const AGENT_META = {
   }
 };
 
+const VALID_STOCKS = [
+  { code: "RELIANCE", name: "Reliance Industries Ltd." },
+  { code: "INFY", name: "Infosys Ltd." },
+  { code: "TCS", name: "Tata Consultancy Services Ltd." },
+  { code: "HDFCBANK", name: "HDFC Bank Ltd." },
+  { code: "ICICIBANK", name: "ICICI Bank Ltd." },
+  { code: "WIPRO", name: "Wipro Ltd." },
+  { code: "AXISBANK", name: "Axis Bank Ltd." },
+  { code: "SBIN", name: "State Bank of India" },
+  { code: "TATAMOTORS", name: "Tata Motors Ltd." },
+  { code: "BHARTIARTL", name: "Bharti Airtel Ltd." },
+  { code: "ITC", name: "ITC Ltd." },
+  { code: "LT", name: "Larsen & Toubro Ltd." },
+  { code: "HINDUNILVR", name: "Hindustan Unilever Ltd." },
+  { code: "KOTAKBANK", name: "Kotak Mahindra Bank Ltd." },
+  { code: "BAJFINANCE", name: "Bajaj Finance Ltd." }
+];
+
+function TickerSelect({ selected, onChange }) {
+  const [search, setSearch] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleRemove = (ticker) => {
+    onChange(selected.filter(t => t !== ticker));
+  };
+
+  const handleAdd = (ticker) => {
+    const uppercaseTicker = ticker.toUpperCase().trim();
+    if (uppercaseTicker && !selected.includes(uppercaseTicker)) {
+      onChange([...selected, uppercaseTicker]);
+    }
+    setSearch("");
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && search.trim()) {
+      e.preventDefault();
+      handleAdd(search);
+    }
+  };
+
+  const filteredOptions = VALID_STOCKS.filter(opt =>
+    opt.code.toLowerCase().includes(search.toLowerCase()) ||
+    opt.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const exactMatch = VALID_STOCKS.some(opt => opt.code.toUpperCase() === search.toUpperCase().trim());
+
+  return (
+    <div className="ticker-select-container" ref={containerRef}>
+      <div 
+        className="ticker-select-input-container"
+        onClick={() => setIsOpen(true)}
+      >
+        {selected.map(ticker => (
+          <span key={ticker} className="ticker-select-tag">
+            {ticker}
+            <button 
+              type="button" 
+              className="ticker-select-tag-remove"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemove(ticker);
+              }}
+            >
+              <X size={12} style={{ display: 'block' }} />
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          className="ticker-select-search-input"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setIsOpen(true);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={selected.length === 0 ? "Search or type ticker (e.g. RELIANCE, TCS)..." : ""}
+        />
+      </div>
+
+      {isOpen && (
+        <div className="ticker-select-dropdown">
+          {filteredOptions.map(opt => {
+            const isSelected = selected.includes(opt.code);
+            return (
+              <div
+                key={opt.code}
+                className={`ticker-select-option ${isSelected ? 'selected' : ''}`}
+                onClick={() => {
+                  if (isSelected) {
+                    handleRemove(opt.code);
+                  } else {
+                    handleAdd(opt.code);
+                  }
+                }}
+              >
+                <div>
+                  <span className="ticker-select-option-code">{opt.code}</span>
+                  <span style={{ margin: '0 0.5rem', opacity: 0.3 }}>|</span>
+                  <span className="ticker-select-option-name">{opt.name}</span>
+                </div>
+                {isSelected && <span style={{ color: 'var(--accent-cyan)', fontSize: '0.8rem' }}>✓</span>}
+              </div>
+            );
+          })}
+          
+          {search.trim() && !exactMatch && (
+            <div 
+              className="ticker-select-option"
+              onClick={() => handleAdd(search)}
+              style={{ borderTop: '1px dashed rgba(255,255,255,0.08)', color: 'var(--accent-cyan)' }}
+            >
+              <span>Add custom: <strong className="ticker-select-option-code">{search.toUpperCase().trim()}</strong></span>
+              <span className="ticker-select-option-name">Press Enter to add</span>
+            </div>
+          )}
+
+          {filteredOptions.length === 0 && !search.trim() && (
+            <div className="ticker-select-no-results">No options available</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [mode, setMode] = useState('demo'); // 'demo' or 'live'
   const [isPlaying, setIsPlaying] = useState(false);
@@ -68,7 +208,7 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isLiveRunning, setIsLiveRunning] = useState(false);
   const [activeSpinners, setActiveSpinners] = useState({});
-  const [selectedTickers, setSelectedTickers] = useState("RELIANCE, TATAMOTORS, INFY");
+  const [selectedTickers, setSelectedTickers] = useState(["RELIANCE", "TATAMOTORS", "INFY"]);
   const [consoleLogs, setConsoleLogs] = useState(["[system] AlgoDesk Multi-Agent Quantification Deck ready.", "[system] Select 'Play Demo' to review cached audit trials or run live server."]);
   const [error, setError] = useState(null);
 
@@ -162,7 +302,7 @@ export default function App() {
     addLog("Triggering new live agent debate on FastAPI backend...", "api");
 
     try {
-      const tickerList = selectedTickers.split(",").map(t => t.trim().toUpperCase());
+      const tickerList = selectedTickers.map(t => t.trim().toUpperCase());
 
       const response = await fetch(`${API_BASE_URL}/api/start-session`, {
         method: "POST",
@@ -338,14 +478,7 @@ export default function App() {
           <>
             <div className="controls-group" style={{ flexGrow: 1, maxWidth: '500px' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Universe Tickers:</span>
-              <input
-                type="text"
-                className="select-input"
-                style={{ flexGrow: 1, fontFamily: 'var(--font-mono)' }}
-                value={selectedTickers}
-                onChange={(e) => setSelectedTickers(e.target.value)}
-                placeholder="RELIANCE, TATAMOTORS, INFY"
-              />
+              <TickerSelect selected={selectedTickers} onChange={setSelectedTickers} />
             </div>
 
             <div className="controls-group">

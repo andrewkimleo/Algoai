@@ -718,3 +718,129 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
+
+/* Searchable Multi-Select Tickers Dropdown */
+.ticker-select-container {
+  position: relative;
+  flex-grow: 1;
+  font-family: var(--font-sans);
+}
+
+.ticker-select-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  background: #0d1222;
+  border: var(--border-glass);
+  min-height: 40px;
+  cursor: text;
+  transition: border-color 0.2s ease;
+}
+
+.ticker-select-input-container:focus-within {
+  border-color: var(--accent-cyan);
+}
+
+.ticker-select-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.ticker-select-tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 400;
+  opacity: 0.6;
+  font-size: 0.85rem;
+}
+
+.ticker-select-tag-remove:hover {
+  opacity: 1;
+}
+
+.ticker-select-search-input {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  flex-grow: 1;
+  min-width: 80px;
+  outline: none;
+  padding: 0.2rem 0;
+}
+
+.ticker-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: rgba(13, 18, 34, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: var(--border-glass-hover);
+  border-radius: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: var(--shadow-md);
+  padding: 0.35rem 0;
+}
+
+.ticker-select-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ticker-select-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.ticker-select-option.selected {
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.ticker-select-option-code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.ticker-select-option-name {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.ticker-select-no-results {
+  padding: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
