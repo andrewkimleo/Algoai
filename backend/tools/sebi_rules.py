@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 TRADING_SECONDS_PER_DAY = 23_400      # 6.5 hr trading day
 ORDER_FREQ_THRESHOLD    = 10.0        # orders/sec — SEBI retail limit
-MAX_SINGLE_POSITION_PCT = 20.0        # max % of portfolio in one stock
+MAX_SINGLE_POSITION_PCT = 40.0        # max % of portfolio in one stock
 MAX_TOTAL_EXPOSURE_PCT  = 60.0        # max % of portfolio in algo strategies
 
 
