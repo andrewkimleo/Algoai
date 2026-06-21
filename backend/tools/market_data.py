@@ -16,6 +16,7 @@ Usage:
 
 import os
 import random
+import contextvars
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
@@ -39,6 +40,16 @@ DEMO_TICKERS = [
     "AXISBANK.NS",
     "SBIN.NS",
 ]
+
+# Session-isolated active tickers using ContextVar to prevent race conditions
+session_tickers = contextvars.ContextVar("session_tickers", default=None)
+
+def get_active_tickers() -> list[str]:
+    """Retrieve the dynamically overridden tickers for the active session, or fallback to DEMO_TICKERS."""
+    tickers = session_tickers.get()
+    if tickers is not None:
+        return tickers
+    return DEMO_TICKERS
 
 # ── Data class ────────────────────────────────────────────────────────────────
 

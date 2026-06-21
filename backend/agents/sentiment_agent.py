@@ -28,7 +28,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from crewai import Agent, Task, Crew, LLM
 from crewai.tools import tool
 
-from tools.market_data import DEMO_TICKERS
+from tools.market_data import get_active_tickers
 from tools.news_scraper import fetch_news, articles_to_payload
 from band.message_schema import make_proposal, BandMessage
 
@@ -112,7 +112,7 @@ def sentiment_scanner(period: str = "recent") -> str:
     """
     results = {}
 
-    for ticker in DEMO_TICKERS:
+    for ticker in get_active_tickers():
         company  = TICKER_TO_COMPANY.get(ticker, ticker)
 
         # ── Fetch structured articles from news_scraper ───────────────────────

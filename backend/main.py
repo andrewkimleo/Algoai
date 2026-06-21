@@ -222,6 +222,8 @@ def main():
                         help="Only run strategy agents (for faster testing)")
     parser.add_argument("--no-band",     action="store_true",
                         help="Skip Band posting (run agents locally only)")
+    parser.add_argument("--tickers",     type=str, default=None,
+                        help="Comma-separated list of tickers to run on")
     args = parser.parse_args()
 
     # ── Apply mode override ───────────────────────────────────────────────────
@@ -229,6 +231,14 @@ def main():
         os.environ["MARKET_DATA_MODE"]  = args.mode
         os.environ["NEWS_SCRAPER_MODE"] = args.mode
         print(f"[main] Mode override → {args.mode}")
+
+    # ── Apply ticker universe override ────────────────────────────────────────
+    if args.tickers:
+        from tools.market_data import session_tickers, _normalize_ticker
+        ticker_list = [t.strip() for t in args.tickers.split(",") if t.strip()]
+        normalized_tickers = [_normalize_ticker(t) for t in ticker_list]
+        session_tickers.set(normalized_tickers)
+        print(f"[main] Ticker universe override → {normalized_tickers}")
 
     # ── Load config ───────────────────────────────────────────────────────────
     config     = load_config()
@@ -515,6 +525,11 @@ async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_ma
     import asyncio
     from band.message_schema import make_status_update
     from api.server import get_session_data
+    from tools.market_data import session_tickers, _normalize_ticker
+
+    if tickers:
+        normalized_tickers = [_normalize_ticker(t) for t in tickers]
+        session_tickers.set(normalized_tickers)
     
     # Load config and order agents
     config = load_config()

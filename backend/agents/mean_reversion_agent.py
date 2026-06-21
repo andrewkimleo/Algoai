@@ -21,7 +21,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from crewai import Agent, Task, Crew, LLM
 from crewai.tools import tool
 
-from tools.market_data import get_ohlcv, DEMO_TICKERS
+from tools.market_data import get_ohlcv, get_active_tickers
 from band.message_schema import make_proposal, BandMessage
 
 
@@ -49,7 +49,7 @@ def mean_reversion_scanner(period: str = "6mo") -> str:
     """
     scores = {}
 
-    for ticker in DEMO_TICKERS:
+    for ticker in get_active_tickers():
         try:
             result = get_ohlcv(ticker, period)
             close  = result.df["close"]
