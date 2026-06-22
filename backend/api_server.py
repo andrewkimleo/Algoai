@@ -16,6 +16,9 @@ if 'tools' in sys.modules:
     if hasattr(tools_mod, '__file__') and tools_mod.__file__ and 'site-packages' in tools_mod.__file__:
         del sys.modules['tools']
 
+# Force-import local tools package immediately to cache it in sys.modules
+import tools
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
