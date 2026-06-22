@@ -29,17 +29,29 @@ import pandas as pd
 # Default is "mock" so the demo works offline / in hackathon Wi-Fi hell.
 _MODE = os.getenv("MARKET_DATA_MODE", "mock").lower()
 
-# Supported NSE tickers for the demo universe
-DEMO_TICKERS = [
-    "RELIANCE.NS",
-    "INFY.NS",
-    "TCS.NS",
-    "HDFCBANK.NS",
-    "ICICIBANK.NS",
-    "WIPRO.NS",
-    "AXISBANK.NS",
-    "SBIN.NS",
+NIFTY_100_TICKERS = [
+    "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", 
+    "BHARTIARTL.NS", "SBIN.NS", "LICI.NS", "ITC.NS", "HINDUNILVR.NS", 
+    "LT.NS", "BAJFINANCE.NS", "HCLTECH.NS", "MARUTI.NS", "SUNPHARMA.NS", 
+    "ADANIENT.NS", "KOTAKBANK.NS", "AXISBANK.NS", "TATAMOTORS.NS", "ULTRACEMCO.NS", 
+    "COALINDIA.NS", "ONGC.NS", "NTPC.NS", "POWERGRID.NS", "JSWSTEEL.NS", 
+    "M&M.NS", "TITAN.NS", "ASIANPAINT.NS", "ADANIPORTS.NS", "TATACONSUM.NS", 
+    "BRITANNIA.NS", "NESTLEIND.NS", "TECHM.NS", "LTIM.NS", "HDFCLIFE.NS", 
+    "SBILIFE.NS", "ICICIPRULI.NS", "BAJAJFINSV.NS", "INDUSINDBK.NS", "TATASTEEL.NS",
+    "GRASIM.NS", "HINDALCO.NS", "DRREDDY.NS", "CIPLA.NS", 
+    "EICHERMOT.NS", "HEROMOTOCO.NS", "BPCL.NS", "IOC.NS", "DIVISLAB.NS",
+    "HINDZINC.NS", "VEDL.NS", "SHREECEM.NS", "PIDILITIND.NS",
+    "SIEMENS.NS", "DLF.NS", "GODREJCP.NS", "DABUR.NS", "COLPAL.NS",
+    "MARICO.NS", "TRENT.NS", "BEL.NS", "HAL.NS", "IRCTC.NS",
+    "ZOMATO.NS", "PAYTM.NS", "NYKAA.NS", "POLICYBZR.NS", "GAIL.NS",
+    "SAIL.NS", "NMDC.NS", "PNB.NS", "BOB.NS", "CANBK.NS",
+    "UNIONBANK.NS", "IDBI.NS", "YESBANK.NS", "JINDALSTEL.NS", "HAVELLS.NS",
+    "AMBUJACEM.NS", "ACC.NS", "MUTHOOTFIN.NS", "CHOLAFIN.NS", "SRF.NS",
+    "AUBANK.NS", "BANDHANBNK.NS", "FEDERALBNK.NS", "IDFCFIRSTB.NS", "GMRINFRA.NS",
+    "IRFC.NS", "RVNL.NS", "RECL.NS", "PFC.NS"
 ]
+
+DEMO_TICKERS = NIFTY_100_TICKERS
 
 # Session-isolated active tickers using ContextVar to prevent race conditions
 session_tickers = contextvars.ContextVar("session_tickers", default=None)
@@ -151,7 +163,13 @@ _PERIOD_DAYS = {
 
 def _fetch_mock(ticker: str, period: str) -> MarketDataResult:
     n_days = _PERIOD_DAYS.get(period, 132)
-    seed_price = _SEED_PRICES.get(ticker, 1000.0)
+    
+    if ticker in _SEED_PRICES:
+        seed_price = _SEED_PRICES[ticker]
+    else:
+        # Deterministic seed price between 100 and 4000 based on ticker hash
+        h = abs(hash(ticker)) % 3900
+        seed_price = float(100.0 + h)
 
     # Deterministic random walk so repeated calls return the same data
     rng = random.Random(hash(ticker) % (2**31))
