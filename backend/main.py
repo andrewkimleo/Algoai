@@ -21,6 +21,17 @@ Run from the backend/ folder:
 
 import os
 import sys
+
+# Ensure backend directory is in the import path and force local 'tools' precedence
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+if 'tools' in sys.modules:
+    tools_mod = sys.modules['tools']
+    if hasattr(tools_mod, '__file__') and tools_mod.__file__ and 'site-packages' in tools_mod.__file__:
+        del sys.modules['tools']
+
 import json
 import time
 import argparse
@@ -45,10 +56,6 @@ litellm.completion = patched_completion
 
 # ── Load .env first, before anything else ────────────────────────────────────
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-
-
-# ── Path setup ────────────────────────────────────────────────────────────────
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from band.message_schema import BandMessage, make_status_update
 

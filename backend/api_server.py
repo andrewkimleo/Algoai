@@ -5,12 +5,20 @@ Runs the FastAPI server with the router defined in api/server.py.
 
 import sys
 import os
+
+# Ensure backend directory is in the import path and force local 'tools' precedence
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+if 'tools' in sys.modules:
+    tools_mod = sys.modules['tools']
+    if hasattr(tools_mod, '__file__') and tools_mod.__file__ and 'site-packages' in tools_mod.__file__:
+        del sys.modules['tools']
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-# Ensure backend directory is in the import path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from api.server import router
 
