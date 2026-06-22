@@ -281,7 +281,115 @@ async def list_sessions():
     }
 
 
+
+@router.get("/portfolio/analytics")
+async def get_portfolio_analytics(session_id: Optional[str] = None):
+    """
+    Calculates historical performance analytics (returns, equity curve,
+    drawdown curve, and Nifty benchmark comparisons) for a completed session.
+    """
+    session = None
+    if session_id:
+        session = _sessions.get(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=404, 
+                detail="The specified portfolio session was not found."
+            )
+    else:
+        # Resolve the latest completed session
+        completed_sessions = [
+            (sid, sdata) for sid, sdata in _sessions.items() 
+            if sdata.get("status") == "completed"
+        ]
+        if completed_sessions:
+            session_id, session = completed_sessions[-1]
+            logger.info(f"[Analytics API] Auto-selected latest completed session: {session_id}")
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail="No completed portfolio sessions exist yet. Run a live simulation first."
+            )
+
+    room_manager = session.get("room_manager")
+    if not room_manager:
+        raise HTTPException(
+            status_code=500, 
+            detail="Session internal room manager not found."
+        )
+
+    # Get final verdict message containing capital allocations
+    messages = room_manager.get_all_messages()
+    final_verdict_msg = next(
+        (m for m in messages if m.get("message_type") == "final_verdict"), 
+        None
+    )
+    
+    if not final_verdict_msg:
+        raise HTTPException(
+            status_code=400, 
+            detail="Portfolio capital decisions have not been finalized yet for this session."
+        )
+
+    allocations = final_verdict_msg.get("payload", {}).get("allocations", [])
+    if not allocations:
+        raise HTTPException(
+            status_code=400, 
+            detail="No strategy allocations found in the final verdict message."
+        )
+
+    # Calculate net stock-level weights from strategy weights
+    weights = {}
+    for alloc in allocations:
+        strat_weight = alloc.get("allocation_pct", 0.0) / 100.0
+        picks = alloc.get("picks", [])
+        wt_list = alloc.get("weights", [])
+        for pick, wt in zip(picks, wt_list):
+            t_upper = pick.upper().strip()
+            if not t_upper.endswith(".NS") and not t_upper.endswith(".BO") and not t_upper.startswith("^"):
+                t_upper += ".NS"
+            weights[t_upper] = weights.get(t_upper, 0.0) + (strat_weight * (wt / 100.0))
+
+    # Normalize weights to sum to 1.0 (eliminates rounding discrepancies)
+    total_weight = sum(weights.values())
+    if total_weight > 0:
+        weights = {k: v / total_weight for k, v in weights.items()}
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Aggregate weight sum is zero. Cannot compute returns."
+        )
+
+    try:
+        from analytics import compute_portfolio_analytics
+        analytics_result = compute_portfolio_analytics(weights, period="3y", benchmark_symbol="^NSEI")
+        
+        # Guard against empty metrics or curves to return standard error message
+        if (not analytics_result or 
+            analytics_result.get("status") == "error" or 
+            not analytics_result.get("metrics") or 
+            not analytics_result.get("equity_curve")):
+            
+            logger.warning("[Analytics API] Analytics returned empty metrics, equity curve, or error status. Returning Insufficient historical data.")
+            msg = "Insufficient historical data"
+            if isinstance(analytics_result, dict) and analytics_result.get("message"):
+                msg = analytics_result.get("message")
+            return {
+                "status": "error",
+                "message": msg
+            }
+            
+        return analytics_result
+    except Exception as e:
+        logger.error(f"[Analytics API] Performance calculation failure: {e}")
+        return {
+            "status": "error",
+            "message": f"Insufficient historical data: {str(e)}"
+        }
+
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "service": "algodesk-backend"}
+

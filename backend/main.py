@@ -516,6 +516,23 @@ async def to_thread_with_context(func, *args, **kwargs):
     return await asyncio.to_thread(ctx.run, func, *args, **kwargs)
 
 
+def pre_fetch_historical_data(tickers: list[str]):
+    """
+    Pre-fetch prices for tickers and benchmark in the background to warm the cache.
+    """
+    try:
+        from analytics.portfolio_returns import fetch_historical_prices
+        from analytics.benchmark import fetch_benchmark_returns
+        print(f"[Analytics Pre-fetch] Starting background data download for: {tickers}")
+        # Warm cache for tickers (3y lookback is default)
+        fetch_historical_prices(tickers, period="3y")
+        # Warm cache for benchmark
+        fetch_benchmark_returns("^NSEI", period="3y")
+        print("[Analytics Pre-fetch] Background cache warming complete.")
+    except Exception as e:
+        print(f"[Analytics Pre-fetch] Failed to pre-fetch historical data: {e}")
+
+
 async def create_and_run_session(session_id: str, tickers: list[str], background_tasks):
     """
     Create a new AlgoDesk debate session asynchronously (FastAPI integration).
@@ -536,6 +553,9 @@ async def create_and_run_session(session_id: str, tickers: list[str], background
     
     # 3. Queue the background debate task
     background_tasks.add_task(run_debate_pipeline_async, session_id, tickers, room_manager)
+    
+    # 4. Queue the background pre-fetching task to warm the cache asynchronously
+    background_tasks.add_task(pre_fetch_historical_data, tickers)
     
     return room_manager
 
