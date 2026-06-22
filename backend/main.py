@@ -29,7 +29,12 @@ if backend_dir not in sys.path:
 
 if 'tools' in sys.modules:
     tools_mod = sys.modules['tools']
-    if hasattr(tools_mod, '__file__') and tools_mod.__file__ and 'site-packages' in tools_mod.__file__:
+    is_our_tools = False
+    if hasattr(tools_mod, '__file__') and tools_mod.__file__:
+        file_path = tools_mod.__file__.replace('\\', '/')
+        if 'backend/tools' in file_path or file_path.endswith('tools/__init__.py'):
+            is_our_tools = True
+    if not is_our_tools:
         del sys.modules['tools']
 
 # Force-import local tools package immediately to cache it in sys.modules
