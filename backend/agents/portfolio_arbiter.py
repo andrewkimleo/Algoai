@@ -106,9 +106,10 @@ class PortfolioArbiter:
         {high_corr_warning}
 
         Instructions:
-        1. Distribute allocation percentages based on Sharpe ratio, win rate, and regime suitability.
-        2. Keep total allocation <= {self.total_exposure_limit}%.
-        3. Respond ONLY with a valid JSON matching this schema:
+        1. Distribute allocation percentages dynamically based on Sharpe ratio, win rate, and regime suitability.
+        2. DO NOT default to a flat or uniform percentage (like exactly 5.0% to everyone) unless the metrics are completely identical. Be active and risk-adjusted: allocate more to the best performers and regime-suited strategies, and less to the weaker ones.
+        3. Keep total allocation <= {self.total_exposure_limit}%.
+        4. Respond ONLY with a valid JSON matching this schema:
         {{
           "allocations": [
             {{
@@ -138,6 +139,7 @@ class PortfolioArbiter:
             )
             
             content = resp.choices[0].message.content
+            print(f"\n[portfolio_arbiter] LLM Response Content:\n{content}\n", flush=True)
             logger.info(f"[portfolio_arbiter] LLM Response: {content}")
             
             # Strict validation
@@ -160,7 +162,7 @@ class PortfolioArbiter:
                 )
                 
             risk_summary = f"{parsed_data.risk_assessment}. Overall confidence: {parsed_data.confidence:.2f}"
-            reasoning = f"{parsed_data.reasoning}\n\nRISK REVIEW: {parsed_data.risk_assessment}"
+            reasoning = f"{parsed_data.reasoning}\n\nRISK REVIEW: {parsed_data.risk_assessment}\n\n[DEBUG] LLM Response Content: {content}"
             
             verdict = FinalVerdict(
                 allocations=final_allocs,
@@ -169,7 +171,11 @@ class PortfolioArbiter:
             )
             
         except Exception as e:
-            logger.exception("[portfolio_arbiter] Failed LLM run or validation. Falling back to default allocations.")
+            import traceback
+            tb = traceback.format_exc()
+            print(f"\n[portfolio_arbiter] ERROR in run_arbitration: {e}\n{tb}\n", flush=True)
+            logger.error(f"[portfolio_arbiter] Failed LLM run or validation: {e}\n{tb}")
+            
             # Deterministic Fallback Allocation
             final_allocs = []
             total = 0.0
@@ -194,8 +200,8 @@ class PortfolioArbiter:
                 )
             verdict = FinalVerdict(
                 allocations=final_allocs,
-                portfolio_risk_summary=f"Fallback allocations due to API run interruption. Total: {total}%.",
-                reasoning="Fallback strategic allocation. All assets allocated evenly under limits."
+                portfolio_risk_summary=f"Fallback allocations due to API error: {str(e)[:100]}. Total: {total}%.",
+                reasoning=f"Fallback strategic allocation. All assets allocated evenly under limits.\n\nError: {str(e)}\n\nTraceback:\n{tb}"
             )
 
         if self.room_manager:
