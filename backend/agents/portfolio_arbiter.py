@@ -1,365 +1,225 @@
 """
-Portfolio Arbiter Agent — CrewAI agent that makes the final allocation
-decision across all compliance-approved proposals.
+portfolio_arbiter.py
+--------------------
+Portfolio Arbiter Agent (Refactored)
 
-Behavior:
-    1. Waits for compliance-approved verdicts for all active proposals
-       (or a 60-second timeout, then works with what it has)
-    2. Checks correlation between tickers using yfinance (reduce if r > 0.7)
-    3. Enforces total exposure ≤ 15% (diversification rule)
-    4. Ranks proposals by Sharpe ratio
-    5. Posts FinalVerdict with allocations and reasoning
-    6. Saves full audit trail to audit_log.json
+Uses direct litellm completion with strict JSON response schemas and Pydantic validation
+to decide the final capital allocations across strategies.
 """
 
 from __future__ import annotations
 
-import asyncio
+import os
 import json
 import logging
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
+from typing import List, Optional
+from pydantic import BaseModel, Field
 
-import numpy as np
-import pandas as pd
-import yfinance as yf
-from crewai import Agent, Task, Crew
-
+import litellm
 from band.room_manager import BandRoomManager
 from band.message_schema import (
     FinalVerdict,
     AllocationItem,
     BandMessage,
 )
+from tools.market_regime import detect_market_regime
+from tools.correlation_filter import prune_correlated_candidates
 
 logger = logging.getLogger(__name__)
 
+# Pydantic Schemas for Strict JSON Output
+class StrategyAllocationModel(BaseModel):
+    strategy: str = Field(description="Name of the strategy (momentum, mean_reversion, sentiment)")
+    allocation_pct: float = Field(description="Allocation weight percentage (0 to 10.0%)")
+    status: str = Field(description="'approved' or 'rejected'")
+    rationale: str = Field(description="A brief 1-sentence rationale for this allocation")
+
+class ArbiterOutputModel(BaseModel):
+    allocations: List[StrategyAllocationModel] = Field(description="Strategic allocations")
+    reasoning: str = Field(description="Synthesis reasoning report")
+    risk_assessment: str = Field(description="Correlation and regime risk analysis")
+    confidence: float = Field(description="Allocation confidence level (0.0 to 1.0)")
 
 class PortfolioArbiter:
-    """
-    CrewAI-based portfolio risk arbiter — final gatekeeper.
-
-    Collects all compliance-approved strategies, checks correlations,
-    enforces position limits, ranks by Sharpe, and posts FinalVerdict.
-    """
-
-    def __init__(
-        self,
-        room_manager: BandRoomManager,
-        groq_api_key: Optional[str] = None,
-    ):
+    def __init__(self, room_manager: Optional[BandRoomManager] = None):
         self.room_manager = room_manager
         self.agent_id = "portfolio_arbiter"
-        self.total_exposure_limit = 15.0  # max 15% of portfolio
+        self.total_exposure_limit = 15.0  # max 15% overall exposure
 
-        api_key = os.getenv("GROQ_API_KEY_ARBITER") or os.getenv("GROQ_API_KEY", "")
-        from crewai import LLM
-        import litellm
+        # Set up litellm credentials
         litellm.drop_params = True
-        
-        self.llm = LLM(
-            model=os.getenv("MODEL_ARBITER") or os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
-            api_key=api_key,
-            temperature=0.2
-        )
+        self.model = os.getenv("MODEL_ARBITER") or os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile")
+        if "gpt-oss-120b" in self.model:
+            self.model = "groq/llama-3.3-70b-versatile"
+        self.api_key = os.getenv("GROQ_API_KEY_ARBITER") or os.getenv("GROQ_API_KEY", "")
 
-        self.crew_agent = Agent(
-            role="Portfolio Risk Arbiter",
-            goal=(
-                "Allocate capital across approved strategies while managing "
-                "total portfolio risk"
-            ),
-            backstory=(
-                "You are the chief risk officer for a retail algo trading "
-                "platform. Your job is to make the final capital allocation "
-                "decisions across all strategies that have passed compliance. "
-                "You balance expected returns against correlation risk, "
-                "concentration risk, and total portfolio exposure. You are "
-                "conservative — you'd rather under-allocate than over-expose."
-            ),
-            llm=self.llm,
-            verbose=True,
-        )
-
-    async def run_arbitration(
-        self,
-        approved_proposals: list[dict],
-        all_verdicts: Optional[list[dict]] = None,
-        timeout: int = 60,
-    ) -> FinalVerdict:
-        """
-        Run final portfolio-level arbitration.
-
-        Args:
-            approved_proposals: Proposals that passed compliance (with algo_tag_id).
-            all_verdicts: All compliance verdicts for context.
-            timeout: Seconds to wait for stragglers (not used in sync mode).
-
-        Returns:
-            FinalVerdict with allocations and reasoning.
-        """
+    async def run_arbitration(self, approved_proposals: List[dict]) -> FinalVerdict:
         if not approved_proposals:
-            logger.warning(f"[{self.agent_id}] No proposals to arbitrate")
             return FinalVerdict(
                 allocations=[],
-                portfolio_risk_summary="No proposals passed compliance.",
-                reasoning="No approved proposals available for allocation.",
+                portfolio_risk_summary="No strategies passed compliance validation.",
+                reasoning="No active candidate proposals qualified.",
             )
 
-        logger.info(
-            f"[{self.agent_id}] Arbitrating {len(approved_proposals)} proposals"
+        # 1. Detect market regime
+        regime_data = detect_market_regime()
+        regime = regime_data.get("regime", "bull")
+        regime_conf = regime_data.get("confidence", 0.8)
+
+        # 2. Extract correlation context
+        # We simulate a check: find if any two proposals target the same sector
+        sectors_seen = {}
+        high_corr_warning = "No high correlations found."
+        for p in approved_proposals:
+            sec = p.get("sector", "Other")
+            if sec != "Other" and sec in sectors_seen:
+                high_corr_warning = f"High sector concentration: multiple picks in {sec} (r > 0.7 simulated). Trim allocation."
+            sectors_seen[sec] = p.get("strategy")
+
+        # 3. Compress proposals to summary indicators only
+        summary_proposals = []
+        for p in approved_proposals:
+            summary_proposals.append({
+                "proposal_id": p.get("proposal_id"),
+                "strategy": p.get("strategy"),
+                "picks": p.get("picks", []),
+                "sharpe": p.get("backtest_summary", {}).get("sharpe", 1.0),
+                "max_drawdown": p.get("max_drawdown", 10.0),
+                "win_rate": p.get("win_rate", 50.0),
+            })
+
+        system_prompt = (
+            "You are the chief risk officer for a retail algo trading platform. "
+            "You must allocate capital across approved strategy proposals. "
+            "Examine metrics and correlation risks, and output a strict JSON payload matching the requested schema."
         )
 
-        # ── Step 1: Fetch price data & compute correlations ──────────────
-        tickers = list({p.get("ticker", "") for p in approved_proposals if p.get("ticker")})
-        correlation_matrix = self._compute_correlations(tickers)
-        high_corr_pairs = self._find_high_correlations(correlation_matrix)
+        user_prompt = f"""
+        Market Regime: {regime} (confidence: {regime_conf})
+        Total Portfolio Exposure Limit: {self.total_exposure_limit}%
+        Individual Strategy Constraint: max 10% allocation per strategy.
+        
+        Approved Strategies Proposals:
+        {json.dumps(summary_proposals, indent=2)}
+        
+        Correlation Warnings:
+        {high_corr_warning}
 
-        # ── Step 2: Rank by Sharpe ratio ─────────────────────────────────
-        ranked = sorted(
-            approved_proposals,
-            key=lambda p: p.get("backtest_summary", {}).get("sharpe", 0),
-            reverse=True,
-        )
-
-        # ── Step 3: Build allocations ────────────────────────────────────
-        allocations: list[AllocationItem] = []
-        total_allocated = 0.0
-
-        # Use LLM for final reasoning
-        proposals_text = "\n".join(
-            f"  - {p.get('proposal_id')}: {p.get('ticker')} "
-            f"({p.get('strategy_type')}), "
-            f"position={p.get('position_size_pct', 5)}%, "
-            f"sharpe={p.get('backtest_summary', {}).get('sharpe', 0):.2f}, "
-            f"algo_tag={p.get('algo_tag_id', 'N/A')}"
-            for p in ranked
-        )
-
-        corr_text = (
-            "High correlations: " + ", ".join(
-                f"{t1}/{t2}: {c:.2f}" for t1, t2, c in high_corr_pairs
-            )
-            if high_corr_pairs
-            else "No high correlations found."
-        )
-
-        task = Task(
-            description=(
-                f"Make final capital allocation decisions for these approved strategies:\n"
-                f"{proposals_text}\n\n"
-                f"Correlation analysis:\n{corr_text}\n\n"
-                f"Rules:\n"
-                f"  - Total portfolio exposure must be ≤ {self.total_exposure_limit}%\n"
-                f"  - If two tickers are highly correlated (r > 0.7), reduce the "
-                f"smaller allocation by 30%\n"
-                f"  - Rank by Sharpe ratio — higher Sharpe gets priority\n"
-                f"  - No single position > 10% of portfolio\n\n"
-                f"For each proposal, decide: approved allocation %, or reject. "
-                f"Explain your reasoning concisely. DO NOT output markdown tables, pipe characters (|), or grid lines."
-            ),
-            expected_output=(
-                "A clean, human-readable bulleted list of final allocations. "
-                "For each strategy, list the proposal ID, ticker, allocation percentage, status, and a brief 1-sentence rationale. "
-                "End with a short summary of the overall portfolio risk. "
-                "Do not use markdown tables or pipe symbols."
-            ),
-            agent=self.crew_agent,
-        )
-
-        crew = Crew(agents=[self.crew_agent], tasks=[task], verbose=False)
+        Instructions:
+        1. Distribute allocation percentages based on Sharpe ratio, win rate, and regime suitability.
+        2. Keep total allocation <= {self.total_exposure_limit}%.
+        3. Respond ONLY with a valid JSON matching this schema:
+        {{
+          "allocations": [
+            {{
+              "strategy": "momentum",
+              "allocation_pct": 7.5,
+              "status": "approved",
+              "rationale": "High momentum is favored under the current Bull market regime."
+            }}
+          ],
+          "reasoning": "Summary portfolio synthesis report.",
+          "risk_assessment": "Correlation and regime analysis.",
+          "confidence": 0.9
+        }}
+        """
 
         try:
-            import asyncio
-            crew_result = await asyncio.to_thread(crew.kickoff)
-            llm_reasoning = str(crew_result).strip()
-        except Exception as e:
-            logger.error(f"[{self.agent_id}] LLM arbitration failed: {e}")
-            llm_reasoning = "LLM reasoning unavailable. Using rule-based allocation."
-
-        # ── Build allocations with rules ─────────────────────────────────
-        for proposal in ranked:
-            prop_id = proposal.get("proposal_id", "")
-            ticker = proposal.get("ticker", "")
-            position_pct = float(proposal.get("position_size_pct", 5.0))
-
-            # Apply correlation reduction
-            for t1, t2, corr in high_corr_pairs:
-                if ticker in (t1, t2):
-                    position_pct *= 0.7
-                    logger.info(
-                        f"[{self.agent_id}] Reduced {ticker} allocation "
-                        f"by 30% due to correlation with "
-                        f"{t2 if ticker == t1 else t1}"
+            # Direct LiteLLM call with json schema structure
+            resp = litellm.completion(
+                model=self.model,
+                api_key=self.api_key,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            
+            content = resp.choices[0].message.content
+            logger.info(f"[portfolio_arbiter] LLM Response: {content}")
+            
+            # Strict validation
+            parsed_data = ArbiterOutputModel.model_validate_json(content)
+            
+            # Map Pydantic validation outputs back to domain models
+            final_allocs = []
+            for item in parsed_data.allocations:
+                # Find matching proposal details
+                prop = next((p for p in approved_proposals if p.get("strategy") == item.strategy), {})
+                final_allocs.append(
+                    AllocationItem(
+                        proposal_id=prop.get("proposal_id", "unknown"),
+                        ticker=prop.get("ticker", "N/A"),
+                        agent_name=prop.get("agent_name", item.strategy),
+                        allocation_pct=item.allocation_pct,
+                        status=item.status,
+                        algo_tag_id=prop.get("algo_tag_id"),
                     )
-                    break
-
-            # Cap at 10% single position
-            position_pct = min(position_pct, 10.0)
-
-            # Check total budget
-            if total_allocated + position_pct > self.total_exposure_limit:
-                remaining = self.total_exposure_limit - total_allocated
-                if remaining < 1.0:
-                    allocations.append(
-                        AllocationItem(
-                            proposal_id=prop_id,
-                            ticker=ticker,
-                            agent_name=proposal.get("agent_name", ""),
-                            allocation_pct=0.0,
-                            status="rejected",
-                            algo_tag_id=proposal.get("algo_tag_id"),
-                        )
-                    )
-                    continue
-                position_pct = remaining
-
-            total_allocated += position_pct
-
-            allocations.append(
-                AllocationItem(
-                    proposal_id=prop_id,
-                    ticker=ticker,
-                    agent_name=proposal.get("agent_name", ""),
-                    allocation_pct=round(position_pct, 2),
-                    status="approved" if position_pct > 0 else "rejected",
-                    algo_tag_id=proposal.get("algo_tag_id"),
                 )
+                
+            risk_summary = f"{parsed_data.risk_assessment}. Overall confidence: {parsed_data.confidence:.2f}"
+            reasoning = f"{parsed_data.reasoning}\n\nRISK REVIEW: {parsed_data.risk_assessment}"
+            
+            verdict = FinalVerdict(
+                allocations=final_allocs,
+                portfolio_risk_summary=risk_summary,
+                reasoning=reasoning
+            )
+            
+        except Exception as e:
+            logger.error(f"[portfolio_arbiter] Failed LLM run or validation: {e}. Falling back to default allocations.")
+            # Deterministic Fallback Allocation
+            final_allocs = []
+            total = 0.0
+            for prop in approved_proposals:
+                alloc_val = 5.0  # default 5%
+                if total + alloc_val <= self.total_exposure_limit:
+                    total += alloc_val
+                    status = "approved"
+                else:
+                    alloc_val = 0.0
+                    status = "rejected"
+                    
+                final_allocs.append(
+                    AllocationItem(
+                        proposal_id=prop.get("proposal_id", "unknown"),
+                        ticker=prop.get("ticker", "N/A"),
+                        agent_name=prop.get("agent_name", prop.get("strategy", "strategy")),
+                        allocation_pct=alloc_val,
+                        status=status,
+                        algo_tag_id=prop.get("algo_tag_id"),
+                    )
+                )
+            verdict = FinalVerdict(
+                allocations=final_allocs,
+                portfolio_risk_summary=f"Fallback allocations due to API run interruption. Total: {total}%.",
+                reasoning="Fallback strategic allocation. All assets allocated evenly under limits."
             )
 
-        # ── Build risk summary ───────────────────────────────────────────
-        approved_count = sum(1 for a in allocations if a.status == "approved")
-        risk_summary = (
-            f"Total capital deployed: {total_allocated:.1f}% "
-            f"(limit: {self.total_exposure_limit}%). "
-            f"Strategies approved: {approved_count}/{len(allocations)}. "
-            f"{corr_text}"
-        )
-
-        verdict = FinalVerdict(
-            allocations=allocations,
-            portfolio_risk_summary=risk_summary,
-            reasoning=llm_reasoning,
-        )
-
-        # Post to Band room
         if self.room_manager:
             await self.room_manager.post_message(
                 verdict.model_dump(), sender_id=self.agent_id
             )
-
-        # Save audit trail
-        self._save_audit_log(verdict, approved_proposals)
-
-        logger.info(
-            f"[{self.agent_id}] Final verdict posted. "
-            f"Approved: {approved_count}, "
-            f"Total allocated: {total_allocated:.1f}%"
-        )
+            
         return verdict
 
-    def _compute_correlations(self, tickers: list[str]) -> pd.DataFrame:
-        """Compute return correlation matrix using yfinance."""
-        if len(tickers) < 2:
-            return pd.DataFrame()
-
-        returns = {}
-        for ticker in tickers:
-            nse = f"{ticker}.NS" if not ticker.endswith((".NS", ".BO")) else ticker
-            try:
-                df = yf.Ticker(nse).history(period="1y")
-                if not df.empty:
-                    returns[ticker] = df["Close"].pct_change().dropna().tail(60)
-            except Exception as e:
-                logger.warning(f"Failed to fetch {nse}: {e}")
-
-        if len(returns) < 2:
-            return pd.DataFrame()
-
-        return pd.DataFrame(returns).corr()
-
-    def _find_high_correlations(
-        self, corr_matrix: pd.DataFrame
-    ) -> list[tuple[str, str, float]]:
-        """Find pairs with correlation > 0.7."""
-        pairs = []
-        if corr_matrix.empty:
-            return pairs
-
-        cols = corr_matrix.columns
-        for i, t1 in enumerate(cols):
-            for j, t2 in enumerate(cols):
-                if i < j and abs(corr_matrix.loc[t1, t2]) > 0.7:
-                    pairs.append((t1, t2, float(corr_matrix.loc[t1, t2])))
-
-        return pairs
-
-    def _save_audit_log(
-        self, verdict: FinalVerdict, proposals: list[dict]
-    ) -> None:
-        """
-        Save the full audit trail to audit_log.json.
-
-        Keys entries by algo_tag_id for traceability.
-        """
-        audit_path = Path(__file__).parent.parent / "audit_log.json"
-
-        # Load existing log
-        existing = {}
-        if audit_path.exists():
-            try:
-                existing = json.loads(audit_path.read_text(encoding="utf-8"))
-            except Exception:
-                existing = {}
-
-        # Build audit entries keyed by algo_tag_id
-        all_messages = self.room_manager.get_all_messages() if self.room_manager else []
-
-        for alloc in verdict.allocations:
-            if alloc.algo_tag_id:
-                audit_entry = {
-                    "proposal_id": alloc.proposal_id,
-                    "ticker": alloc.ticker,
-                    "agent_name": alloc.agent_name,
-                    "allocation_pct": alloc.allocation_pct,
-                    "status": alloc.status,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "debate_messages": [
-                        m for m in all_messages
-                        if m.get("target_proposal_id") == alloc.proposal_id
-                        or m.get("proposal_id") == alloc.proposal_id
-                    ],
-                    "final_verdict": verdict.model_dump(),
-                }
-                existing[alloc.algo_tag_id] = audit_entry
-
-        try:
-            audit_path.write_text(
-                json.dumps(existing, indent=2, default=str),
-                encoding="utf-8",
-            )
-            logger.info(f"[{self.agent_id}] Audit log saved to {audit_path}")
-        except Exception as e:
-            logger.error(f"[{self.agent_id}] Failed to save audit log: {e}")
-
-
-# ── Wrapper for main.py compatibility ────────────────────────────────────────
-
-def run_portfolio_arbiter(all_messages: list) -> "BandMessage":
+def run_portfolio_arbiter(all_messages: list) -> BandMessage:
     """
     Synchronous wrapper called by main.py.
     """
     import asyncio
-    from band.message_schema import BandMessage, make_final_verdict
+    from band.message_schema import make_final_verdict
 
-    # Try to find if compliance has verified this session and get algo_tag_id
-    algo_tag_id = None
-    for m in reversed(all_messages):
+    # Find compliance tag mappings
+    compliance_verdicts = {}
+    for m in all_messages:
         if m.message_type == "compliance_verdict" and m.payload:
-            algo_tag_id = m.payload.get("algo_tag_id")
-            break
+            # Extract details
+            for check in m.payload.get("checks_run", []):
+                pass
+            compliance_verdicts[m.payload.get("target_proposal_id")] = m.payload
 
     latest_per_strategy = {}
     for msg in all_messages:
@@ -368,61 +228,51 @@ def run_portfolio_arbiter(all_messages: list) -> "BandMessage":
             latest_per_strategy[strategy] = msg
 
     all_picks = []
-
     for strategy, p in latest_per_strategy.items():
         payload = p.payload or {}
         picks = payload.get("picks", [])
         
-        # Determine a mock Sharpe ratio for realistic ranking
-        sharpe = 1.0
-        if strategy == "momentum":
-            sharpe = 1.45
-        elif strategy == "mean_reversion":
-            sharpe = 1.28
-        elif strategy == "sentiment":
-            sharpe = 1.15
+        # Pull candidate attributes
+        cands = payload.get("candidates", [])
+        sec = cands[0].get("sector", "IT") if cands else "IT"
+        
+        comp_info = compliance_verdicts.get(p.message_id, {})
 
         all_picks.append({
-            "proposal_id":       p.message_id,
-            "strategy":          strategy,
-            "strategy_type":     strategy,
-            "ticker":            picks[0] if picks else "N/A",
-            "picks":             picks,
-            "weights":           payload.get("weights", []),
+            "proposal_id": p.message_id,
+            "strategy": strategy,
+            "strategy_type": strategy,
+            "ticker": picks[0] if picks else "N/A",
+            "picks": picks,
+            "weights": payload.get("weights", []),
+            "sector": sec,
             "position_size_pct": float(payload.get("position_size_pct", 5.0)),
-            "backtest_summary":  {"sharpe": sharpe},
-            "algo_tag_id":       algo_tag_id or f"SEBI-NSE-2026-{p.message_id[:8].upper()}",
-            "sender":            p.sender,
-            "agent_name":        p.sender,
+            "backtest_summary": {"sharpe": payload.get("sharpe", 1.2)},
+            "max_drawdown": payload.get("max_drawdown", 8.0),
+            "win_rate": payload.get("win_rate", 55.0),
+            "algo_tag_id": comp_info.get("algo_tag_id") or f"SEBI-NSE-2026-{p.message_id[:8].upper()}",
+            "sender": p.sender,
+            "agent_name": p.sender,
         })
 
-    try:
-        arbiter = PortfolioArbiter(room_manager=None)
-        result  = asyncio.run(arbiter.run_arbitration(all_picks))
-        if result:
-            allocations_payload = []
-            for item in result.allocations:
-                pick_info = next((p for p in all_picks if p["proposal_id"] == item.proposal_id), {})
-                allocations_payload.append({
-                    "proposal_id":    item.proposal_id,
-                    "strategy":       pick_info.get("strategy", ""),
-                    "picks":          pick_info.get("picks", []),
-                    "weights":        pick_info.get("weights", []),
-                    "allocation_pct": item.allocation_pct,
-                    "status":         item.status,
-                    "sender":         pick_info.get("sender", "")
-                })
-
-            return make_final_verdict(
-                sender="portfolio_arbiter",
-                allocations=allocations_payload,
-                reasoning=result.reasoning if result.reasoning else result.portfolio_risk_summary,
-            )
-    except Exception as e:
-        print(f"[portfolio_arbiter] Warning: {e}")
+    arbiter = PortfolioArbiter()
+    result = asyncio.run(arbiter.run_arbitration(all_picks))
+    
+    allocations_payload = []
+    for item in result.allocations:
+        pick_info = next((p for p in all_picks if p["proposal_id"] == item.proposal_id), {})
+        allocations_payload.append({
+            "proposal_id": item.proposal_id,
+            "strategy": pick_info.get("strategy", ""),
+            "picks": pick_info.get("picks", []),
+            "weights": pick_info.get("weights", []),
+            "allocation_pct": item.allocation_pct,
+            "status": item.status,
+            "sender": pick_info.get("sender", "")
+        })
 
     return make_final_verdict(
         sender="portfolio_arbiter",
-        allocations=[],
-        reasoning="Failed to arbitrate proposals.",
+        allocations=allocations_payload,
+        reasoning=result.reasoning,
     )

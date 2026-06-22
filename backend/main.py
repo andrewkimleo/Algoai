@@ -493,6 +493,14 @@ def main():
 
 # ── FastAPI / SSE Session Helpers ─────────────────────────────────────────────
 
+async def to_thread_with_context(func, *args, **kwargs):
+    """Runs a function in a background thread, propagating context variables."""
+    import contextvars
+    import asyncio
+    ctx = contextvars.copy_context()
+    return await asyncio.to_thread(ctx.run, func, *args, **kwargs)
+
+
 async def create_and_run_session(session_id: str, tickers: list[str], background_tasks):
     """
     Create a new AlgoDesk debate session asynchronously (FastAPI integration).
@@ -530,6 +538,10 @@ async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_ma
     if tickers:
         normalized_tickers = [_normalize_ticker(t) for t in tickers]
         session_tickers.set(normalized_tickers)
+        
+    from tools.market_regime import detect_market_regime
+    regime_info = detect_market_regime()
+    print(f"[main] Detected Market Regime: {regime_info['regime'].upper()} (Confidence: {regime_info['confidence']})")
     
     # Load config and order agents
     config = load_config()
@@ -560,7 +572,7 @@ async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_ma
         await asyncio.sleep(scan_sleep)
         
         # Execute agent runner in thread
-        band_msg = await asyncio.to_thread(run_agent, agent_cfg)
+        band_msg = await to_thread_with_context(run_agent, agent_cfg)
         if band_msg:
             proposals.append(band_msg)
             all_messages.append(band_msg)
@@ -588,7 +600,7 @@ async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_ma
         
         await asyncio.sleep(scan_sleep)
         
-        band_msg = await asyncio.to_thread(run_review_agent, stress_agent_cfg, all_messages)
+        band_msg = await to_thread_with_context(run_review_agent, stress_agent_cfg, all_messages)
         if band_msg:
             all_messages.append(band_msg)
             await room_manager.post_message(band_msg.model_dump(), stress_agent_cfg["name"])
@@ -614,7 +626,7 @@ async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_ma
             
             await asyncio.sleep(defense_sleep)
             
-            def_msg = await asyncio.to_thread(run_defense, agent_cfg, orig_prop, challenges)
+            def_msg = await to_thread_with_context(run_defense, agent_cfg, orig_prop, challenges)
             if def_msg:
                 all_messages.append(def_msg)
                 await room_manager.post_message(def_msg.model_dump(), agent_cfg["name"])
@@ -630,13 +642,13 @@ async def run_debate_pipeline_async(session_id: str, tickers: list[str], room_ma
         
         await asyncio.sleep(scan_sleep)
         
-        band_msg = await asyncio.to_thread(run_review_agent, agent_cfg, all_messages)
+        band_msg = await to_thread_with_context(run_review_agent, agent_cfg, all_messages)
         if band_msg:
             all_messages.append(band_msg)
             await room_manager.post_message(band_msg.model_dump(), agent_cfg["name"])
             
     # ── Save Audit Log & Complete ────────────────────────────────────────────
-    await asyncio.to_thread(save_audit_log, all_messages, session_id)
+    await to_thread_with_context(save_audit_log, all_messages, session_id)
     
     sess = get_session_data(session_id)
     if sess:
