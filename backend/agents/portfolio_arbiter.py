@@ -169,7 +169,7 @@ class PortfolioArbiter:
             )
             
         except Exception as e:
-            logger.error(f"[portfolio_arbiter] Failed LLM run or validation: {e}. Falling back to default allocations.")
+            logger.exception("[portfolio_arbiter] Failed LLM run or validation. Falling back to default allocations.")
             # Deterministic Fallback Allocation
             final_allocs = []
             total = 0.0
