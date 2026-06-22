@@ -110,6 +110,22 @@ def fetch_batch_data(tickers: List[str], period: str = "6mo") -> Dict[str, pd.Da
     if cached is not None:
         return cached
 
+    # Check for mock mode override
+    mode = os.getenv("MARKET_DATA_MODE", "mock").lower()
+    if mode == "mock":
+        logger.info(f"[IndicatorEngine] Fetching mock batch market data for {len(tickers)} tickers...")
+        from tools.market_data import _fetch_mock
+        processed = {}
+        for ticker in tickers:
+            try:
+                res = _fetch_mock(ticker, period)
+                processed[ticker] = res.df
+            except Exception as e:
+                logger.error(f"[IndicatorEngine] Mock fetch failed for {ticker}: {e}")
+        # Save to cache for 1 hour
+        cache_manager.set(cache_key, processed, expiry_seconds=3600)
+        return processed
+
     logger.info(f"Downloading batch market data for {len(tickers)} tickers...")
     
     # Use live batch download with threads

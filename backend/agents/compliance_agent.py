@@ -36,6 +36,12 @@ class ComplianceAgent:
         # Step 1: Run deterministic SEBI rules validation
         deterministic_results = run_all_checks(proposal_data)
 
+        # Log check details for diagnostics
+        logger.info(f"[compliance_agent] Diagnosis for {proposal_data.get('strategy')}: "
+                    f"picks={proposal_data.get('picks')}, "
+                    f"weights={proposal_data.get('weights')}, "
+                    f"results={[{c['check_name']: c['passed'] for c in deterministic_results}]}")
+
         checks_run = []
         has_failure = False
 
