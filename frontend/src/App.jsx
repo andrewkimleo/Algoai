@@ -312,7 +312,7 @@ export default function App() {
     };
 
     checkHealth();
-    const interval = setInterval(checkHealth, 5000); // Check every 5 seconds
+    const interval = setInterval(checkHealth, 20000); // Check every 20 seconds
     return () => clearInterval(interval);
   }, [mode]);
 
