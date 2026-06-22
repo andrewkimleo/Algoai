@@ -162,7 +162,19 @@ class PortfolioArbiter:
                 )
                 
             risk_summary = f"{parsed_data.risk_assessment}. Overall confidence: {parsed_data.confidence:.2f}"
-            reasoning = f"{parsed_data.reasoning}\n\nRISK REVIEW: {parsed_data.risk_assessment}\n\n[DEBUG] LLM Response Content: {content}"
+            
+            synthesis_points = []
+            for item in parsed_data.allocations:
+                status_str = "Approved" if item.status == "approved" else "Rejected"
+                synthesis_points.append(
+                    f"• **{item.strategy.replace('_', ' ').title()} Strategy** ({item.allocation_pct}% allocation, {status_str}): {item.rationale}"
+                )
+            
+            reasoning = (
+                f"{parsed_data.reasoning}\n\n"
+                f"**Risk Review**: {parsed_data.risk_assessment}\n\n"
+                f"**Strategy Allocations**:\n" + "\n".join(synthesis_points)
+            )
             
             verdict = FinalVerdict(
                 allocations=final_allocs,
@@ -200,8 +212,13 @@ class PortfolioArbiter:
                 )
             verdict = FinalVerdict(
                 allocations=final_allocs,
-                portfolio_risk_summary=f"Fallback allocations due to API error: {str(e)[:100]}. Total: {total}%.",
-                reasoning=f"Fallback strategic allocation. All assets allocated evenly under limits.\n\nError: {str(e)}\n\nTraceback:\n{tb}"
+                portfolio_risk_summary=f"Fallback allocations due to API error. Total: {total}%.",
+                reasoning=(
+                    f"Fallback strategic allocation has been implemented. All assets are allocated evenly "
+                    f"under regulatory exposure limits.\n\n"
+                    f"**System Status**: The automated review system encountered an issue processing the model response. "
+                    f"Details: {str(e)[:150]}."
+                )
             )
 
         if self.room_manager:
