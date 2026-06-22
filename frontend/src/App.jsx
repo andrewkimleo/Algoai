@@ -62,20 +62,98 @@ const AGENT_META = {
 
 const VALID_STOCKS = [
   { code: "RELIANCE", name: "Reliance Industries Ltd." },
-  { code: "INFY", name: "Infosys Ltd." },
   { code: "TCS", name: "Tata Consultancy Services Ltd." },
+  { code: "INFY", name: "Infosys Ltd." },
   { code: "HDFCBANK", name: "HDFC Bank Ltd." },
   { code: "ICICIBANK", name: "ICICI Bank Ltd." },
-  { code: "WIPRO", name: "Wipro Ltd." },
-  { code: "AXISBANK", name: "Axis Bank Ltd." },
-  { code: "SBIN", name: "State Bank of India" },
-  { code: "TATAMOTORS", name: "Tata Motors Ltd." },
   { code: "BHARTIARTL", name: "Bharti Airtel Ltd." },
+  { code: "SBIN", name: "State Bank of India" },
+  { code: "LICI", name: "Life Insurance Corporation of India" },
   { code: "ITC", name: "ITC Ltd." },
-  { code: "LT", name: "Larsen & Toubro Ltd." },
   { code: "HINDUNILVR", name: "Hindustan Unilever Ltd." },
+  { code: "LT", name: "Larsen & Toubro Ltd." },
+  { code: "BAJFINANCE", name: "Bajaj Finance Ltd." },
+  { code: "HCLTECH", name: "HCL Technologies Ltd." },
+  { code: "MARUTI", name: "Maruti Suzuki India Ltd." },
+  { code: "SUNPHARMA", name: "Sun Pharmaceutical Industries Ltd." },
+  { code: "ADANIENT", name: "Adani Enterprises Ltd." },
   { code: "KOTAKBANK", name: "Kotak Mahindra Bank Ltd." },
-  { code: "BAJFINANCE", name: "Bajaj Finance Ltd." }
+  { code: "AXISBANK", name: "Axis Bank Ltd." },
+  { code: "TATAMOTORS", name: "Tata Motors Ltd." },
+  { code: "ULTRACEMCO", name: "UltraTech Cement Ltd." },
+  { code: "COALINDIA", name: "Coal India Ltd." },
+  { code: "ONGC", name: "Oil & Natural Gas Corporation Ltd." },
+  { code: "NTPC", name: "NTPC Ltd." },
+  { code: "POWERGRID", name: "Power Grid Corporation of India Ltd." },
+  { code: "JSWSTEEL", name: "JSW Steel Ltd." },
+  { code: "M&M", name: "Mahindra & Mahindra Ltd." },
+  { code: "TITAN", name: "Titan Company Ltd." },
+  { code: "ASIANPAINT", name: "Asian Paints Ltd." },
+  { code: "ADANIPORTS", name: "Adani Ports & SEZ Ltd." },
+  { code: "TATACONSUM", name: "Tata Consumer Products Ltd." },
+  { code: "BRITANNIA", name: "Britannia Industries Ltd." },
+  { code: "NESTLEIND", name: "Nestle India Ltd." },
+  { code: "TECHM", name: "Tech Mahindra Ltd." },
+  { code: "LTIM", name: "LTIMindtree Ltd." },
+  { code: "HDFCLIFE", name: "HDFC Life Insurance Company Ltd." },
+  { code: "SBILIFE", name: "SBI Life Insurance Company Ltd." },
+  { code: "ICICIPRULI", name: "ICICI Prudential Life Insurance" },
+  { code: "BAJAJFINSV", name: "Bajaj Finserv Ltd." },
+  { code: "INDUSINDBK", name: "IndusInd Bank Ltd." },
+  { code: "TATASTEEL", name: "Tata Steel Ltd." },
+  { code: "GRASIM", name: "Grasim Industries Ltd." },
+  { code: "HINDALCO", name: "Hindalco Industries Ltd." },
+  { code: "DRREDDY", name: "Dr. Reddy's Laboratories Ltd." },
+  { code: "CIPLA", name: "Cipla Ltd." },
+  { code: "EICHERMOT", name: "Eicher Motors Ltd." },
+  { code: "HEROMOTOCO", name: "Hero MotoCorp Ltd." },
+  { code: "BPCL", name: "Bharat Petroleum Corporation Ltd." },
+  { code: "IOC", name: "Indian Oil Corporation Ltd." },
+  { code: "DIVISLAB", name: "Divi's Laboratories Ltd." },
+  { code: "HINDZINC", name: "Hindustan Zinc Ltd." },
+  { code: "VEDL", name: "Vedanta Ltd." },
+  { code: "SHREECEM", name: "Shree Cement Ltd." },
+  { code: "PIDILITIND", name: "Pidilite Industries Ltd." },
+  { code: "SIEMENS", name: "Siemens Ltd." },
+  { code: "DLF", name: "DLF Ltd." },
+  { code: "GODREJCP", name: "Godrej Consumer Products Ltd." },
+  { code: "DABUR", name: "Dabur India Ltd." },
+  { code: "COLPAL", name: "Colgate-Palmolive (India) Ltd." },
+  { code: "MARICO", name: "Marico Ltd." },
+  { code: "TRENT", name: "Trent Ltd." },
+  { code: "BEL", name: "Bharat Electronics Ltd." },
+  { code: "HAL", name: "Hindustan Aeronautics Ltd." },
+  { code: "IRCTC", name: "IRCTC Ltd." },
+  { code: "ZOMATO", name: "Zomato Ltd." },
+  { code: "PAYTM", name: "One97 Communications Ltd. (Paytm)" },
+  { code: "NYKAA", name: "FSN E-Commerce Ventures (Nykaa)" },
+  { code: "POLICYBZR", name: "PB Fintech Ltd. (Policybazaar)" },
+  { code: "GAIL", name: "GAIL (India) Ltd." },
+  { code: "SAIL", name: "Steel Authority of India Ltd." },
+  { code: "NMDC", name: "NMDC Ltd." },
+  { code: "PNB", name: "Punjab National Bank" },
+  { code: "BOB", name: "Bank of Baroda" },
+  { code: "CANBK", name: "Canara Bank" },
+  { code: "UNIONBANK", name: "Union Bank of India" },
+  { code: "IDBI", name: "IDBI Bank Ltd." },
+  { code: "YESBANK", name: "Yes Bank Ltd." },
+  { code: "JINDALSTEL", name: "Jindal Steel & Power Ltd." },
+  { code: "HAVELLS", name: "Havells India Ltd." },
+  { code: "AMBUJACEM", name: "Ambuja Cements Ltd." },
+  { code: "ACC", name: "ACC Ltd." },
+  { code: "MUTHOOTFIN", name: "Muthoot Finance Ltd." },
+  { code: "CHOLAFIN", name: "Cholamandalam Investment & Finance" },
+  { code: "SRF", name: "SRF Ltd." },
+  { code: "AUBANK", name: "AU Small Finance Bank Ltd." },
+  { code: "BANDHANBNK", name: "Bandhan Bank Ltd." },
+  { code: "FEDERALBNK", name: "The Federal Bank Ltd." },
+  { code: "IDFCFIRSTB", name: "IDFC First Bank Ltd." },
+  { code: "GMRINFRA", name: "GMR Airports Infrastructure Ltd." },
+  { code: "IRFC", name: "Indian Railway Finance Corporation" },
+  { code: "RVNL", name: "Rail Vikas Nigam Ltd." },
+  { code: "RECL", name: "REC Ltd." },
+  { code: "PFC", name: "Power Finance Corporation Ltd." },
+  { code: "WIPRO", name: "Wipro Ltd." }
 ];
 
 function TickerSelect({ selected, onChange }) {
@@ -211,9 +289,32 @@ export default function App() {
   const [selectedTickers, setSelectedTickers] = useState(["RELIANCE", "TATAMOTORS", "INFY"]);
   const [consoleLogs, setConsoleLogs] = useState(["[system] AlgoDesk Multi-Agent Quantification Deck ready.", "[system] Select 'Play Demo' to review cached audit trials or run live server."]);
   const [error, setError] = useState(null);
+  const [isBackendHealthy, setIsBackendHealthy] = useState(false);
 
   const eventSourceRef = useRef(null);
   const terminalBodyRef = useRef(null);
+
+  // Periodically check FastAPI server health
+  useEffect(() => {
+    if (mode !== 'live') return;
+
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/health`);
+        if (response.ok) {
+          setIsBackendHealthy(true);
+        } else {
+          setIsBackendHealthy(false);
+        }
+      } catch (err) {
+        setIsBackendHealthy(false);
+      }
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [mode]);
 
   // Auto-scroll terminal logs inside container
   useEffect(() => {
@@ -424,11 +525,19 @@ export default function App() {
           </div>
 
           <div className="status-badge">
-            <span className={`dot ${isPlaying ? 'running' : messages.length > 0 ? 'completed' : ''}`}></span>
+            <span className={`dot ${
+              mode === 'demo'
+                ? (isPlaying ? 'running' : 'completed')
+                : (isLiveRunning ? 'running' : isBackendHealthy ? 'completed' : '')
+            }`}></span>
             <span>
               {mode === 'demo'
                 ? (isPlaying ? "PLAYING DEMO" : "MOCK READY")
-                : (activeSessionId ? "SSE STREAM ACTIVE" : "SERVER DISCONNECTED")}
+                : (isLiveRunning 
+                    ? "SSE STREAM ACTIVE" 
+                    : isBackendHealthy 
+                      ? "SERVER CONNECTED" 
+                      : "SERVER DISCONNECTED")}
             </span>
           </div>
         </div>
