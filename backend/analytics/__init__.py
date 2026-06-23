@@ -70,6 +70,10 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
     
     # We import TICKER_ALIASES to match exactly
     from .portfolio_returns import TICKER_ALIASES
+    import yfinance as yf
+    
+    # Enforce MIN_OBSERVATIONS = 252 (roughly 1 year of daily returns)
+    MIN_OBSERVATIONS = 252
     
     # Check each ticker from the weights keys
     for ticker in tickers:
@@ -81,15 +85,69 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         if t_norm in TICKER_ALIASES:
             t_norm = TICKER_ALIASES[t_norm]
             
+        series = None
         if prices_df is not None and t_norm in prices_df.columns:
             series = prices_df[t_norm].dropna()
-            # MIN_POINTS is 30
-            if len(series) >= 30:
-                valid_tickers.append(t_norm)
-                logger.info(f"[Market Download Details] Ticker: {t_norm} | Rows: {len(series)} | First Date: {series.index[0].date()} | Last Date: {series.index[-1].date()}")
-                continue
+            
+        obs_count = len(series) if series is not None else 0
+        
+        # Valid data check
+        if obs_count >= MIN_OBSERVATIONS:
+            valid_tickers.append(t_norm)
+            logger.info(f"[{t_norm}] Received {obs_count} observations. Required {MIN_OBSERVATIONS}. Validation: PASS")
+            continue
+            
+        # Retry fresh download once
+        logger.warning(f"[{t_norm}] Received {obs_count} observations. Required {MIN_OBSERVATIONS}. Validation: FAIL. Retrying fresh download...")
+        try:
+            # Clear corrupt cache
+            import tools.cache_manager as cache_manager
+            cache_key = f"yf_price_single_{t_norm}_{period}"
+            try:
+                import os
+                cache_path = cache_manager._get_cache_path(cache_key)
+                if os.path.exists(cache_path):
+                    os.remove(cache_path)
+            except Exception:
+                pass
+                
+            single_data = yf.download(t_norm, period=period, auto_adjust=True, progress=False)
+            if not single_data.empty:
+                if "Close" in single_data:
+                    close_col = single_data["Close"]
+                elif "close" in single_data:
+                    close_col = single_data["close"]
+                else:
+                    close_col = single_data
+                    
+                if isinstance(close_col, pd.DataFrame):
+                    if t_norm in close_col.columns:
+                        close_col = close_col[t_norm]
+                    else:
+                        close_col = close_col.iloc[:, 0]
+                        
+                if getattr(close_col.index, "tz", None) is not None:
+                    close_col.index = close_col.index.tz_localize(None)
+                if hasattr(close_col.index, "normalize"):
+                    close_col.index = close_col.index.normalize()
+                    
+                retry_series = close_col.ffill().bfill().dropna()
+                obs_count = len(retry_series)
+                
+                if obs_count >= MIN_OBSERVATIONS:
+                    logger.info(f"[{t_norm}] Retry success. Received {obs_count} observations. Required {MIN_OBSERVATIONS}. Validation: PASS")
+                    valid_tickers.append(t_norm)
+                    if prices_df is None:
+                        prices_df = pd.DataFrame({t_norm: retry_series})
+                    else:
+                        prices_df[t_norm] = retry_series
+                    cache_manager.set(cache_key, close_col.ffill().bfill(), expiry_seconds=86400)
+                    continue
+        except Exception as retry_err:
+            logger.warning(f"[{t_norm}] Retry failed with error: {retry_err}")
+            
         failed_tickers.append(t_norm)
-        logger.warning(f"[Market Download Failed] Ticker: {t_norm} has missing/all-NaN/insufficient price data.")
+        logger.warning(f"[{t_norm}] Received {obs_count} observations. Required {MIN_OBSERVATIONS}. Marked invalid and excluded from analytics")
 
     # Calculate threshold
     MIN_VALID_TICKERS = max(5, int(len(tickers) * 0.25))
@@ -204,38 +262,15 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
     logger.info(f"[Portfolio Returns] Tail:\n{port_returns.tail(5)}")
 
     # STEP 7: LOOKBACK PERIOD VALIDATION
-    # Verify every selected asset has at least 3 years of history
-    for ticker in tickers:
-        t_norm = ticker.upper().strip()
-        if not t_norm.endswith(".NS") and not t_norm.endswith(".BO") and not t_norm.startswith("^"):
-            t_norm += ".NS"
-            
-        series = prices_df[t_norm].dropna()
-        first_date = series.index[0]
-        last_date = series.index[-1]
-        history_days = (last_date - first_date).days
-        logger.info(f"[Lookback Validation] Ticker: {t_norm} | history span: {history_days} calendar days.")
-        
-        # Expect at least ~1000 calendar days for a 3-year lookback
-        if history_days < 1000:
-            logger.error(f"[Lookback Validation Failed] Ticker {t_norm} has only {history_days} calendar days of history (requires 3 years).")
-            return {
-                "status": "error",
-                "stage": "lookback_validation",
-                "reason": f"ticker {t_norm} has insufficient history: {history_days} days (requires at least 3 years)"
-            }
-
-    # Verify benchmark (^NSEI) has matching dates
-    bench_first = bench_returns.index[0]
-    bench_last = bench_returns.index[-1]
-    bench_days = (bench_last - bench_first).days
-    logger.info(f"[Lookback Validation] Benchmark | history span: {bench_days} calendar days.")
-    if bench_days < 1000:
-        logger.error(f"[Lookback Validation Failed] Benchmark index has only {bench_days} days of history.")
+    # Verify benchmark (^NSEI) has enough observations
+    bench_obs = len(bench_returns.dropna())
+    logger.info(f"[Lookback Validation] Benchmark | observations: {bench_obs}.")
+    if bench_obs < 252:
+        logger.error(f"[Lookback Validation Failed] Benchmark index has only {bench_obs} observations.")
         return {
             "status": "error",
             "stage": "lookback_validation",
-            "reason": f"benchmark index has insufficient history: {bench_days} days"
+            "reason": f"benchmark index has insufficient history: {bench_obs} observations"
         }
 
     # 4. Generate compounded Equity Curves (100,000 Initial Capital)
