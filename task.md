@@ -1,26 +1,7 @@
-# AlgoAI Historical Portfolio Analytics Tasks
+# AlgoAI Historical Portfolio Analytics Diagnostics Tasks
 
-- [x] Create analytics modules:
-    - [x] `backend/analytics/portfolio_returns.py` (caching download layer, return calculations, support portfolio and agent-level return series)
-    - [x] `backend/analytics/equity_curve.py` (starting capital 100k, cumulative equity curves)
-    - [x] `backend/analytics/drawdown.py` (drawdown percentages and peak tracking)
-    - [x] `backend/analytics/benchmark.py` (NIFTY download, returns and benchmark curve calculations)
-    - [x] `backend/analytics/metrics.py` (Sharpe, Sortino, Volatility, Max Drawdown, Calmar, CAGR, Annual Return/Vol, IR, Beta, Alpha calculations)
-    - [x] `backend/analytics/__init__.py` (orchestration function exposing `compute_portfolio_analytics`)
-- [x] Implement new API endpoint in `backend/api/server.py`:
-    - [x] Add `GET /api/portfolio/analytics` supporting `session_id` parameter, metadata payload (lookback, benchmark, timestamp, asset count), and clean error handling (no completed portfolio, fetch failure)
-- [x] Refactor React Frontend `frontend/src/App.jsx`:
-    - [x] Add api fetch trigger after the final allocations are loaded
-    - [x] Implement Recharts Equity Curve chart (Portfolio vs Nifty)
-    - [x] Implement Recharts Drawdown history area chart
-    - [x] Update performance metrics grid to consume API numbers
-    - [x] Build Outperformance card (Portfolio vs Benchmark vs Excess return)
-    - [x] Add structured empty state handles for "Analytics Not Available Yet" (no completed portfolio, fetch error, empty data)
-- [x] Debug and Fix NaN performance metrics & benchmark comparison:
-    - [x] Resolve timezone-awareness difference between ^NSEI (timezone-aware) and stock equities (timezone-naive)
-    - [x] Standardize all DatetimeIndex indices to naive midnight datetimes via `.tz_localize(None)` and `.normalize()`
-    - [x] Ensure `aligned = pd.concat([portfolio_returns, benchmark_returns], axis=1, join="inner")` has valid rows (no empty inner join)
-    - [x] Add validation checks (empty checks, zero divisions, zero std devs, nulls, infs) before every metric calculation
-    - [x] Log and print dataframe shapes, row counts, first/last 5 returns, and intermediate metric coefficients
-    - [x] Add validation fallback returning `{ "status": "error", "message": "Insufficient historical data" }` instead of NaN
-- [x] Verify execution by simulating allocations via frontend
+- [ ] Task 1: Add Robust Strategy Suffix/Case Normalization to `portfolio_arbiter.py`
+- [ ] Task 2: Implement Self-Healing Allocation Lookup in `server.py`
+- [ ] Task 3: Standardize structured error formats with both "message" and "reason" in `__init__.py` and `server.py`
+- [ ] Task 4: Expose detailed diagnostic error messages on the screen in `App.jsx`
+- [ ] Task 5: Manual verification via live simulation

@@ -150,6 +150,30 @@ class PortfolioArbiter:
             for item in parsed_data.allocations:
                 # Find matching proposal details
                 prop = next((p for p in approved_proposals if p.get("strategy") == item.strategy), {})
+                
+                # Diagnostic check: Is there a mismatch?
+                import os
+                log_dir = "d:\\Algoai\\backend"
+                os.makedirs(log_dir, exist_ok=True)
+                log_file = os.path.join(log_dir, "diagnostics_forensic.log")
+                
+                if not prop:
+                    log_msg = f"[FORENSIC] Mismatch detected: LLM strategy '{item.strategy}' has no exact match in approved proposals strategies: {[p.get('strategy') for p in approved_proposals]}\n"
+                    logger.error(log_msg)
+                    with open(log_file, "a") as df_log:
+                        df_log.write(log_msg)
+                else:
+                    prop_id = prop.get("proposal_id", "unknown")
+                    log_msg = f"[FORENSIC] Match found for LLM strategy '{item.strategy}': proposal_id = '{prop_id}'\n"
+                    logger.info(log_msg)
+                    with open(log_file, "a") as df_log:
+                        df_log.write(log_msg)
+                    if prop_id == "unknown":
+                        warn_msg = f"[FORENSIC WARNING] proposal_id for strategy '{item.strategy}' is 'unknown'\n"
+                        logger.warning(warn_msg)
+                        with open(log_file, "a") as df_log:
+                            df_log.write(warn_msg)
+                            
                 final_allocs.append(
                     AllocationItem(
                         proposal_id=prop.get("proposal_id", "unknown"),

@@ -37,7 +37,7 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
     for ticker in normalized_tickers:
         cache_key = f"yf_price_single_{ticker}_{period}"
         cached_series = cache_manager.get(cache_key)
-        if cached_series is not None and not cached_series.empty:
+        if cached_series is not None and not cached_series.empty and not cached_series.isna().all():
             if getattr(cached_series.index, "tz", None) is not None:
                 cached_series.index = cached_series.index.tz_localize(None)
             if hasattr(cached_series.index, "normalize"):
@@ -45,7 +45,16 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
             logger.info(f"[Analytics] Cache hit for single ticker: {ticker}")
             ticker_series[ticker] = cached_series
         else:
-            logger.info(f"[Analytics] Cache miss for single ticker: {ticker}")
+            logger.info(f"[Analytics] Cache miss or invalid/NaN cache for single ticker: {ticker}")
+            if cached_series is not None:
+                try:
+                    import os
+                    cache_path = cache_manager._get_cache_path(cache_key)
+                    if os.path.exists(cache_path):
+                        os.remove(cache_path)
+                        logger.info(f"[Analytics] Deleted corrupted NaN cache file for: {ticker}")
+                except Exception as ex:
+                    logger.warning(f"[Analytics] Failed to delete corrupted cache: {ex}")
             tickers_to_download.append(ticker)
             
     if tickers_to_download:
@@ -77,6 +86,10 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
                 if hasattr(close_col.index, "normalize"):
                     close_col.index = close_col.index.normalize()
                 series = close_col.ffill().bfill()
+                
+                if series.isna().all():
+                    raise ValueError(f"Downloaded yfinance data for {t} is entirely NaN.")
+                
                 ticker_series[t] = series
                 cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
             else:
@@ -102,12 +115,16 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
                     # Only one column returned in series form
                     t = tickers_to_download[0]
                     series = close_df.ffill().bfill()
+                    if series.isna().all():
+                        raise ValueError(f"Downloaded yfinance data for {t} is entirely NaN.")
                     ticker_series[t] = series
                     cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
                 else:
                     for t in tickers_to_download:
                         if t in close_df.columns:
                             series = close_df[t].ffill().bfill()
+                            if series.isna().all():
+                                raise ValueError(f"Downloaded yfinance data for {t} is entirely NaN.")
                             ticker_series[t] = series
                             cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
                         else:
@@ -115,6 +132,8 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
                             matched_col = next((col for col in close_df.columns if col.upper().strip() == t.upper().strip()), None)
                             if matched_col:
                                 series = close_df[matched_col].ffill().bfill()
+                                if series.isna().all():
+                                    raise ValueError(f"Downloaded yfinance data for {matched_col} is entirely NaN.")
                                 ticker_series[t] = series
                                 cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
                             else:
@@ -159,8 +178,10 @@ def compute_weighted_returns(prices_df: pd.DataFrame, weights: dict[str, float])
         normalized_weights[t_upper] = wt
 
     # Compute daily percent returns for all columns in prices
-    returns_df = prices_df.pct_change().dropna()
-    logger.info(f"[Analytics] Calculated returns DataFrame shape: {returns_df.shape}")
+    pct_changes = prices_df.pct_change()
+    returns_df = pct_changes.dropna()
+    logger.info(f"[Analytics] Returns DataFrame shape before dropna: {pct_changes.shape}")
+    logger.info(f"[Analytics] Calculated returns DataFrame shape after dropna: {returns_df.shape}")
     
     # Calculate weighted daily returns
     portfolio_returns = pd.Series(0.0, index=returns_df.index)

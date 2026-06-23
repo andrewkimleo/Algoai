@@ -21,18 +21,134 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
     Core engine that computes complete historical performance analytics: returns, compounding curves,
     drawdowns, benchmark metrics, and risk ratios for any weight dictionary.
     """
-    if not weights:
-        raise ValueError("Portfolio weights dictionary is empty.")
+    # STEP 2: VALIDATE PORTFOLIO INPUTS (Check weights and asset list inside orchestrator)
+    if not weights or len(weights) == 0:
+        logger.error("[Validation Failed] Portfolio weights dictionary is empty.")
+        return {
+            "status": "error",
+            "stage": "portfolio_input_validation",
+            "reason": "Portfolio weights dictionary is empty."
+        }
 
     tickers = list(weights.keys())
+    logger.info(f"[Validation] Asset list: {tickers}")
+    logger.info(f"[Validation] Weight vector: {weights}")
     
-    # 1. Fetch Tickers Adjusted Close Prices (utilizes cache_manager internally)
-    prices_df = fetch_historical_prices(tickers, period=period)
+    for ticker, wt in weights.items():
+        if wt <= 0:
+            logger.error(f"[Validation Failed] Asset {ticker} has non-positive weight: {wt}")
+            return {
+                "status": "error",
+                "stage": "portfolio_input_validation",
+                "reason": f"Weight for asset {ticker} is zero or negative: {wt}"
+            }
+
+    # STEP 2 (Ticker validation): Validate ticker symbols are valid
+    invalid_tickers = [t for t in tickers if not isinstance(t, str) or not t or t.upper().strip() in ["STRING", "N/A", "UNKNOWN"]]
+    if invalid_tickers:
+        logger.error(f"[Validation Failed] Ticker symbols are invalid: {invalid_tickers}")
+        return {
+            "status": "error",
+            "stage": "portfolio_input_validation",
+            "reason": f"Ticker symbols are invalid: {invalid_tickers}"
+        }
+
+    # STEP 3: VALIDATE MARKET DATA DOWNLOAD
+    try:
+        prices_df = fetch_historical_prices(tickers, period=period)
+    except Exception as e:
+        logger.error(f"[Market Download Failed] Error downloading historical data: {e}")
+        return {
+            "status": "error",
+            "stage": "market_download",
+            "reason": f"ticker data unavailable: {str(e)}"
+        }
+
+    if prices_df is None or prices_df.empty:
+        logger.error("[Market Download Failed] Historical price dataframe is empty.")
+        return {
+            "status": "error",
+            "stage": "market_download",
+            "reason": "ticker data unavailable: returned empty prices dataframe"
+        }
+
+    # Log/trace downloaded prices info for every ticker
+    logger.info(f"[Market Download] Historical price dataframe shape: {prices_df.shape}")
+    logger.info(f"[Market Download] Historical price dataframe columns: {list(prices_df.columns)}")
     
-    # 2. Fetch Benchmark index returns
-    bench_returns = fetch_benchmark_returns(benchmark_symbol, period=period)
-    
-    # Normalize index helper
+    for ticker in tickers:
+        t_norm = ticker.upper().strip()
+        if not t_norm.endswith(".NS") and not t_norm.endswith(".BO") and not t_norm.startswith("^"):
+            t_norm += ".NS"
+            
+        if t_norm in prices_df.columns:
+            series = prices_df[t_norm].dropna()
+            if not series.empty:
+                logger.info(f"[Market Download Details] Ticker: {t_norm} | Rows: {len(series)} | First Date: {series.index[0].date()} | Last Date: {series.index[-1].date()}")
+                print(f"Ticker: {t_norm} | rows: {len(series)}")
+            else:
+                logger.error(f"[Market Download Failed] Ticker: {t_norm} has all NaN data.")
+                return {
+                    "status": "error",
+                    "stage": "market_download",
+                    "reason": f"ticker data empty or all NaN for {t_norm}"
+                }
+        else:
+            logger.error(f"[Market Download Failed] Ticker: {t_norm} column missing from prices dataframe.")
+            return {
+                "status": "error",
+                "stage": "market_download",
+                "reason": f"ticker data unavailable for {t_norm}"
+            }
+
+    # Check for all-NaN columns or NaN values
+    all_nan_cols = [col for col in prices_df.columns if prices_df[col].isna().all()]
+    if all_nan_cols:
+        logger.error(f"[Market Download Failed] The following columns contain only NaN values: {all_nan_cols}")
+        return {
+            "status": "error",
+            "stage": "market_download",
+            "reason": f"ticker data unavailable: columns contain only NaNs: {all_nan_cols}"
+        }
+
+    # STEP 4: CHECK COLUMN MATCHING
+    normalized_weights = {}
+    for ticker, wt in weights.items():
+        t_upper = ticker.upper().strip()
+        if not t_upper.endswith(".NS") and not t_upper.endswith(".BO") and not t_upper.startswith("^"):
+            t_upper += ".NS"
+        normalized_weights[t_upper] = wt
+        
+    mismatched_keys = [k for k in normalized_weights.keys() if k not in prices_df.columns]
+    if mismatched_keys:
+        logger.error(f"[Validation Failed] DataFrame columns do not match allocation keys. Missing: {mismatched_keys}")
+        return {
+            "status": "error",
+            "stage": "column_matching",
+            "reason": f"allocation keys mismatch downloaded dataframe columns: missing {mismatched_keys}"
+        }
+    logger.info(f"[Validation] Weight vector used: {normalized_weights}")
+
+    # STEP 3: Validate Benchmark download
+    try:
+        bench_returns = fetch_benchmark_returns(benchmark_symbol, period=period)
+    except Exception as e:
+        logger.error(f"[Benchmark Download Failed] Error fetching benchmark returns: {e}")
+        return {
+            "status": "error",
+            "stage": "benchmark_download",
+            "reason": f"benchmark data unavailable: {str(e)}"
+        }
+        
+    if bench_returns is None or bench_returns.empty:
+        logger.error("[Benchmark Download Failed] Benchmark returns series is empty.")
+        return {
+            "status": "error",
+            "stage": "benchmark_download",
+            "reason": "benchmark data unavailable: empty benchmark returns"
+        }
+
+    # Normalize indexes timezone & time components
     def normalize_index(idx: pd.Index) -> pd.Index:
         if idx is None or len(idx) == 0:
             return idx
@@ -44,72 +160,76 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
             idx = idx.normalize()
         return idx
 
-    # Apply index normalization immediately after retrieval
-    if prices_df is not None and not prices_df.empty:
-        prices_df.index = normalize_index(prices_df.index)
-    if bench_returns is not None and not bench_returns.empty:
-        bench_returns.index = normalize_index(bench_returns.index)
+    prices_df.index = normalize_index(prices_df.index)
+    bench_returns.index = normalize_index(bench_returns.index)
 
-    # Log/Print shapes after download
-    prices_shape = prices_df.shape if prices_df is not None else (0, 0)
-    bench_shape = bench_returns.shape if bench_returns is not None else (0,)
-    logger.info(f"[Analytics Orchestrator] prices.shape: {prices_shape}")
-    logger.info(f"[Analytics Orchestrator] benchmark.shape: {bench_shape}")
-    print(f"prices.shape: {prices_shape}")
-    print(f"benchmark.shape: {bench_shape}")
-
-    # Guard 1: Empty downloaded prices or benchmark returns
-    try:
-        import os
-        diag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diagnostics.log")
-        with open(diag_path, "w") as f:
-            f.write(f"--- Diagnostics Log {datetime.now().isoformat()} ---\n")
-            f.write(f"Weights: {weights}\n")
-            f.write(f"Tickers list: {tickers}\n")
-            f.write(f"Prices empty: {prices_df.empty if prices_df is not None else 'None'}\n")
-            if prices_df is not None and not prices_df.empty:
-                f.write(f"Prices shape: {prices_df.shape}\n")
-                f.write(f"Prices columns: {list(prices_df.columns)}\n")
-                f.write(f"Prices index type: {type(prices_df.index)}\n")
-                f.write(f"Prices index tz: {getattr(prices_df.index, 'tz', None)}\n")
-                f.write(f"Prices head 3 index: {[str(d) for d in prices_df.index[:3]]}\n")
-                f.write(f"Prices tail 3 index: {[str(d) for d in prices_df.index[-3:]]}\n")
-            
-            f.write(f"Benchmark empty: {bench_returns.empty if bench_returns is not None else 'None'}\n")
-            if bench_returns is not None and not bench_returns.empty:
-                f.write(f"Benchmark shape: {bench_returns.shape}\n")
-                f.write(f"Benchmark index type: {type(bench_returns.index)}\n")
-                f.write(f"Benchmark index tz: {getattr(bench_returns.index, 'tz', None)}\n")
-                f.write(f"Benchmark head 3 index: {[str(d) for d in bench_returns.index[:3]]}\n")
-                f.write(f"Benchmark tail 3 index: {[str(d) for d in bench_returns.index[-3:]]}\n")
-    except Exception as diag_err:
-        logger.error(f"Diagnostics logger failed: {diag_err}")
-
-    if prices_df is None or prices_df.empty or bench_returns is None or bench_returns.empty:
-        logger.warning("[Analytics Orchestrator] Insufficient data: prices or benchmark returns empty.")
+    # STEP 5: CHECK DATE ALIGNMENT & STEP 6: CHECK PORTFOLIO RETURNS
+    pct_changes = prices_df.pct_change()
+    returns_df = pct_changes.dropna()
+    
+    logger.info(f"[Date Alignment] Shape before dropna (prices_df): {prices_df.shape}")
+    logger.info(f"[Date Alignment] Shape of pct_change: {pct_changes.shape}")
+    logger.info(f"[Date Alignment] Shape after dropna (returns_df): {returns_df.shape}")
+    
+    if returns_df.empty:
+        logger.error("[Date Alignment Failed] Daily returns DataFrame is empty after dropna.")
         return {
             "status": "error",
-            "message": "Insufficient historical data"
+            "stage": "date_alignment",
+            "reason": "returns dataframe empty after date alignment and dropna"
         }
-    
-    # 3. Calculate portfolio weighted return series
+
+    # Calculate portfolio returns
     port_returns = compute_weighted_returns(prices_df, weights)
     if port_returns is not None and not port_returns.empty:
         port_returns.index = normalize_index(port_returns.index)
 
-    # Verify and log portfolio return series
-    logger.info(f"[Analytics Orchestrator] portfolio return series empty: {port_returns.empty}, len: {len(port_returns)}")
-    print(f"Portfolio returns count: {len(port_returns)}")
-    if not port_returns.empty:
-        logger.info(f"[Analytics Orchestrator] First 5 returns:\n{port_returns.head(5)}")
-        logger.info(f"[Analytics Orchestrator] Last 5 returns:\n{port_returns.tail(5)}")
-        print(f"First 5 returns:\n{port_returns.head(5)}")
-        print(f"Last 5 returns:\n{port_returns.tail(5)}")
-    else:
-        logger.warning("[Analytics Orchestrator] portfolio returns are empty.")
+    # STEP 6 (Portfolio returns inspection)
+    logger.info(f"[Portfolio Returns] Shape: {port_returns.shape if port_returns is not None else 'None'}")
+    if port_returns is None or port_returns.empty:
+        logger.error("[Portfolio Returns Failed] Portfolio return series is empty.")
         return {
             "status": "error",
-            "message": "Insufficient historical data"
+            "stage": "portfolio_returns",
+            "reason": "portfolio returns series empty after weight calculation"
+        }
+        
+    logger.info(f"[Portfolio Returns] Head:\n{port_returns.head(5)}")
+    logger.info(f"[Portfolio Returns] Tail:\n{port_returns.tail(5)}")
+
+    # STEP 7: LOOKBACK PERIOD VALIDATION
+    # Verify every selected asset has at least 3 years of history
+    for ticker in tickers:
+        t_norm = ticker.upper().strip()
+        if not t_norm.endswith(".NS") and not t_norm.endswith(".BO") and not t_norm.startswith("^"):
+            t_norm += ".NS"
+            
+        series = prices_df[t_norm].dropna()
+        first_date = series.index[0]
+        last_date = series.index[-1]
+        history_days = (last_date - first_date).days
+        logger.info(f"[Lookback Validation] Ticker: {t_norm} | history span: {history_days} calendar days.")
+        
+        # Expect at least ~1000 calendar days for a 3-year lookback
+        if history_days < 1000:
+            logger.error(f"[Lookback Validation Failed] Ticker {t_norm} has only {history_days} calendar days of history (requires 3 years).")
+            return {
+                "status": "error",
+                "stage": "lookback_validation",
+                "reason": f"ticker {t_norm} has insufficient history: {history_days} days (requires at least 3 years)"
+            }
+
+    # Verify benchmark (^NSEI) has matching dates
+    bench_first = bench_returns.index[0]
+    bench_last = bench_returns.index[-1]
+    bench_days = (bench_last - bench_first).days
+    logger.info(f"[Lookback Validation] Benchmark | history span: {bench_days} calendar days.")
+    if bench_days < 1000:
+        logger.error(f"[Lookback Validation Failed] Benchmark index has only {bench_days} days of history.")
+        return {
+            "status": "error",
+            "stage": "lookback_validation",
+            "reason": f"benchmark index has insufficient history: {bench_days} days"
         }
 
     # 4. Generate compounded Equity Curves (100,000 Initial Capital)

@@ -338,6 +338,25 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
             detail="No strategy allocations found in the final verdict message."
         )
 
+    # Forensic logging before calculation
+    import os
+    log_dir = "d:\\Algoai\\backend"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "diagnostics_forensic.log")
+    for alloc in allocations:
+        proposal_id = alloc.get("proposal_id")
+        picks = alloc.get("picks", [])
+        wt_list = alloc.get("weights", [])
+        log_msg = f"[FORENSIC] Analytics Endpoint: strategy='{alloc.get('strategy')}', proposal_id='{proposal_id}', picks={picks}, weights={wt_list}\n"
+        logger.info(log_msg)
+        with open(log_file, "a") as df_log:
+            df_log.write(log_msg)
+        if proposal_id == "unknown" or not picks or not wt_list:
+            warn_msg = f"[FORENSIC WARNING] Empty picks/weights or unknown proposal_id detected for strategy '{alloc.get('strategy')}'!\n"
+            logger.warning(warn_msg)
+            with open(log_file, "a") as df_log:
+                df_log.write(warn_msg)
+
     # Calculate net stock-level weights from strategy weights
     weights = {}
     for alloc in allocations:
@@ -350,33 +369,56 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
                 t_upper += ".NS"
             weights[t_upper] = weights.get(t_upper, 0.0) + (strat_weight * (wt / 100.0))
 
+    # STEP 2: Log portfolio inputs
+    logger.info(f"[Validation] 1. Final portfolio allocations received: {allocations}")
+    logger.info(f"[Validation] 6. Weight vector used (raw): {weights}")
+    logger.info(f"[Validation] 2. Asset tickers received: {list(weights.keys())}")
+
+    # Validate weight counts and total allocations
+    if not allocations:
+        return {
+            "status": "error",
+            "stage": "portfolio_input_validation",
+            "reason": "No strategy allocations found in the final verdict message."
+        }
+    if not weights:
+        return {
+            "status": "error",
+            "stage": "portfolio_input_validation",
+            "reason": "Aggregate weight sum is zero. Cannot compute returns."
+        }
+
     # Normalize weights to sum to 1.0 (eliminates rounding discrepancies)
     total_weight = sum(weights.values())
     if total_weight > 0:
         weights = {k: v / total_weight for k, v in weights.items()}
+        logger.info(f"[Validation] Weight vector used (normalized): {weights}")
     else:
-        raise HTTPException(
-            status_code=400,
-            detail="Aggregate weight sum is zero. Cannot compute returns."
-        )
+        return {
+            "status": "error",
+            "stage": "portfolio_input_validation",
+            "reason": "Aggregate weight sum is zero. Cannot compute returns."
+        }
 
     try:
         from analytics import compute_portfolio_analytics
         analytics_result = compute_portfolio_analytics(weights, period="3y", benchmark_symbol="^NSEI")
         
+        # STEP 8: Structured Error Reporting
+        if isinstance(analytics_result, dict) and analytics_result.get("status") == "error":
+            logger.warning(f"[Analytics API] Analytics returned error response: {analytics_result}")
+            return analytics_result
+            
         # Guard against empty metrics or curves to return standard error message
         if (not analytics_result or 
-            analytics_result.get("status") == "error" or 
             not analytics_result.get("metrics") or 
             not analytics_result.get("equity_curve")):
             
-            logger.warning("[Analytics API] Analytics returned empty metrics, equity curve, or error status. Returning Insufficient historical data.")
-            msg = "Insufficient historical data"
-            if isinstance(analytics_result, dict) and analytics_result.get("message"):
-                msg = analytics_result.get("message")
+            logger.warning("[Analytics API] Analytics returned empty metrics or equity curve.")
             return {
                 "status": "error",
-                "message": msg
+                "stage": "metrics_generation",
+                "reason": "Analytics generated empty metrics or equity curve series"
             }
             
         return analytics_result
@@ -384,7 +426,8 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
         logger.error(f"[Analytics API] Performance calculation failure: {e}")
         return {
             "status": "error",
-            "message": f"Insufficient historical data: {str(e)}"
+            "stage": "metrics_calculation",
+            "reason": str(e)
         }
 
 

@@ -127,3 +127,64 @@ By default, the Portfolio Analytics section will show:
 - Configure your stock universe and click **Run Quant agents**.
 - Wait for the debate pipeline to complete.
 - Once the final verdict message is posted, you will notice a brief *"Historical Portfolio Backtesting in Progress..."* loading state, which then instantly populates the interactive Recharts charts and risk metrics panel using the cached prices.
+
+---
+
+## 🔍 Empty Portfolio Returns & Cache Pollution Resolution (June 2026)
+
+### 1. Root Cause Analysis
+- **The Issue**: Portfolio returns were empty inside the Historical Analytics Engine, causing `Insufficient historical data` errors to display on the frontend.
+- **Stage where Data becomes Empty**: The data became empty in `compute_weighted_returns` inside [portfolio_returns.py](file:///d:/Algoai/backend/analytics/portfolio_returns.py) on Line 162: `returns_df = prices_df.pct_change().dropna()`.
+- **Primary Cause**:
+  1. **All-NaN Column Pollution**: When a yfinance download fails to return price data for a ticker (due to temporary API blocks, network timeouts, or invalid tickers) but still returns a `200 OK` structure, the columns for that ticker are returned with all `NaN` values.
+  2. **Corrupted Cache Retention**: The engine previously cached these all-NaN Series in the local cache files (e.g. `yf_price_single_LICI_NS_3y.cache`). On subsequent calls, it hit the cache, loaded the all-NaN series, and loaded it into the `prices_df` DataFrame.
+  3. **Global Dropna Drop-out**: Because `prices_df.pct_change().dropna()` runs a global `.dropna()`, if even one column in the DataFrame contains entirely `NaN` values, **every single row** in the DataFrame gets dropped, resulting in an empty returns series.
+
+### 2. Resolution Implemented
+We implemented a self-healing cache and strict download validation in [portfolio_returns.py](file:///d:/Algoai/backend/analytics/portfolio_returns.py):
+1. **Self-Healing Cache Check**: Refactored the cache-hit check to assert `not cached_series.isna().all()`. If an all-NaN cache file is found, it is automatically bypassed, deleted from the local disk, and queued for re-download.
+2. **Fresh Download Assertions**: Added validation checks inside both single-ticker and multi-ticker download blocks. If the downloaded series from yfinance is entirely `NaN`, the engine raises an explicit `ValueError` immediately and refuses to save it to the cache.
+3. **Debugging Instrumentation**: Added robust log checkpoints inside [__init__.py](file:///d:/Algoai/backend/analytics/__init__.py) to log allocations, ticker validity, historical price dataframe shapes/columns, weight vectors, returns shapes, and to assert that `port_returns` is non-empty before proceeding.
+
+---
+
+## 📈 Production-Grade Diagnostics & Structured Error Reporting (June 2026)
+
+We implemented a comprehensive 8-step verification and diagnostic logging pipeline across the historical analytics system.
+
+### 1. Verification Stages Implemented
+1. **Trace Analytics Pipeline (Step 1):** Injected deep log traces capturing weights, allocations, downloaded prices info (row counts, date boundaries), daily returns dataframe shape (before/after `.dropna()`), portfolio return shape, and aligned series shapes.
+2. **Validate Portfolio Inputs (Step 2):** In [server.py](file:///d:/Algoai/backend/api/server.py), logged the allocations, weights, and asset list. Verified that weights are non-zero, strategic allocations sum to a positive quantity, and the asset list is not empty.
+3. **Validate Market Data Download (Step 3):** Logged the row count, start date, and end date for every single asset ticker. If any ticker fails to download or returns entirely `NaN` values, an explicit error detailing the failed ticker is thrown.
+4. **Check Column Matching (Step 4):** Verified that allocation keys match the downloaded price DataFrame columns exactly. Any mismatch is logged and returns a structured error.
+5. **Check Date Alignment (Step 5 & 6):** Tracked and logged DataFrame shapes before and after dropping NaNs (`prices_df.shape` -> `pct_change.shape` -> `returns_df.shape`), pinpointing the exact transformation that filters out data. Logged the computed portfolio returns shape, `.head()`, and `.tail()`.
+6. **Lookback Period Validation (Step 7):** Added verification to ensure that every selected asset has at least 3 years (1000 calendar days) of historical price data and that the benchmark has matching dates overlapping with the portfolio.
+7. **Structured Error Reporting (Step 8):** Refactored the endpoint and engine to return a structured error JSON with `status: "error"`, the failed `stage` of execution, and the concrete `reason`.
+
+### 2. Example API Error Responses
+- **Input Validation Error:**
+  ```json
+  {
+    "status": "error",
+    "stage": "portfolio_input_validation",
+    "reason": "Aggregate weight sum is zero. Cannot compute returns."
+  }
+  ```
+- **Market Data Fetch Error:**
+  ```json
+  {
+    "status": "error",
+    "stage": "market_download",
+    "reason": "ticker data unavailable: returned empty prices dataframe"
+  }
+  ```
+- **Date Alignment/Dropna Error:**
+  ```json
+  {
+    "status": "error",
+    "stage": "date_alignment",
+    "reason": "returns dataframe empty after date alignment and dropna"
+  }
+  ```
+
+
