@@ -75,14 +75,14 @@ async def start_session(
     Body: { "tickers": ["RELIANCE", "TATAMOTORS", "INFY"] }
     """
     try:
-        from main import create_and_run_session
+        from main import create_and_run_session  # type: ignore
     except ImportError:
         import sys
         import os
         backend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend")
         if backend_path not in sys.path:
             sys.path.insert(0, backend_path)
-        from main import create_and_run_session
+        from main import create_and_run_session  # type: ignore
 
     tickers = request.tickers or ["RELIANCE", "TATAMOTORS", "INFY"]
     session_id = f"session_{uuid.uuid4().hex[:12]}"
@@ -390,7 +390,7 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
                     if mod_name == 'analytics' or mod_name.startswith('analytics.'):
                         del sys.modules[mod_name]
 
-        from analytics import compute_portfolio_analytics
+        from analytics import compute_portfolio_analytics  # type: ignore
         analytics_result = compute_portfolio_analytics(weights, period="3y", benchmark_symbol="^NSEI")
         
         # Guard against empty metrics or curves to return standard error message
