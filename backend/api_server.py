@@ -21,8 +21,21 @@ if 'tools' in sys.modules:
     if not is_our_tools:
         del sys.modules['tools']
 
-# Force-import local tools package immediately to cache it in sys.modules
+if 'analytics' in sys.modules:
+    analytics_mod = sys.modules['analytics']
+    is_our_analytics = False
+    if hasattr(analytics_mod, '__file__') and analytics_mod.__file__:
+        file_path = analytics_mod.__file__.replace('\\', '/')
+        if 'backend/analytics' in file_path or file_path.endswith('analytics/__init__.py'):
+            is_our_analytics = True
+    if not is_our_analytics:
+        for mod_name in list(sys.modules.keys()):
+            if mod_name == 'analytics' or mod_name.startswith('analytics.'):
+                del sys.modules[mod_name]
+
+# Force-import local packages immediately to cache them in sys.modules
 import tools
+import analytics
 
 import uvicorn
 from fastapi import FastAPI

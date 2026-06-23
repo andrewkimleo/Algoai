@@ -401,6 +401,36 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
         }
 
     try:
+        import sys
+        import os
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if current_dir.replace('\\', '/').endswith('/backend/api'):
+            backend_path = os.path.dirname(current_dir)
+        elif current_dir.replace('\\', '/').endswith('/api'):
+            backend_path = os.path.join(os.path.dirname(current_dir), "backend")
+        else:
+            backend_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
+        backend_path = os.path.abspath(backend_path)
+        
+        if backend_path not in sys.path:
+            sys.path.insert(0, backend_path)
+        else:
+            sys.path.remove(backend_path)
+            sys.path.insert(0, backend_path)
+
+        if 'analytics' in sys.modules:
+            analytics_mod = sys.modules['analytics']
+            is_our_analytics = False
+            if hasattr(analytics_mod, '__file__') and analytics_mod.__file__:
+                file_path = analytics_mod.__file__.replace('\\', '/')
+                if 'backend/analytics' in file_path or file_path.endswith('analytics/__init__.py'):
+                    is_our_analytics = True
+            if not is_our_analytics:
+                logger.info(f"[Analytics Import Guard] Removing non-local analytics module: {getattr(analytics_mod, '__file__', None)}")
+                for mod_name in list(sys.modules.keys()):
+                    if mod_name == 'analytics' or mod_name.startswith('analytics.'):
+                        del sys.modules[mod_name]
+
         from analytics import compute_portfolio_analytics
         analytics_result = compute_portfolio_analytics(weights, period="3y", benchmark_symbol="^NSEI")
         
