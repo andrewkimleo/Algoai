@@ -12,6 +12,25 @@ import tools.cache_manager as cache_manager
 
 logger = logging.getLogger(__name__)
 
+MIN_POINTS = 30
+
+def is_valid_series(series: pd.Series) -> bool:
+    return (
+        series is not None
+        and not series.empty
+        and len(series.dropna()) >= MIN_POINTS
+    )
+
+TICKER_ALIASES = {
+    "LTI": "LTIM.NS",
+    "LTI.NS": "LTIM.NS",
+    "TATAMOTORS": "TATAMOTORS.NS",
+    "BOB": "BOB.NS",
+    "RECL": "RECL.NS",
+    "GMRINFRA": "GMRINFRA.NS",
+    "ZOMATO": "ZOMATO.NS"
+}
+
 def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFrame:
     """
     Fetch adjusted close prices for a list of tickers from yfinance.
@@ -20,12 +39,16 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
     if not tickers:
         return pd.DataFrame()
 
-    # Normalize ticker symbols
+    # Normalize ticker symbols and apply aliases
     normalized_tickers = []
     for t in tickers:
         t_upper = t.upper().strip()
+        if t_upper in TICKER_ALIASES:
+            t_upper = TICKER_ALIASES[t_upper]
         if not t_upper.endswith(".NS") and not t_upper.endswith(".BO") and not t_upper.startswith("^"):
             t_upper += ".NS"
+        if t_upper in TICKER_ALIASES:
+            t_upper = TICKER_ALIASES[t_upper]
         normalized_tickers.append(t_upper)
         
     normalized_tickers = sorted(list(set(normalized_tickers)))
@@ -33,11 +56,40 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
     ticker_series = {}
     tickers_to_download = []
     
+    # Check if mock mode is active
+    import os
+    mode = os.getenv("MARKET_DATA_MODE", "mock").lower()
+    
+    if mode == "mock":
+        logger.info(f"[Analytics] Mock mode active. Generating mock price data.")
+        from tools.market_data import _fetch_mock
+        for ticker in normalized_tickers:
+            res = _fetch_mock(ticker, period)
+            series = res.df["close"]
+            if getattr(series.index, "tz", None) is not None:
+                series.index = series.index.tz_localize(None)
+            if hasattr(series.index, "normalize"):
+                series.index = series.index.normalize()
+            ticker_series[ticker] = series
+            
+        combined_df = pd.DataFrame(ticker_series)
+        combined_df = combined_df.ffill().bfill()
+        
+        for ticker in ticker_series:
+            print(f"[Analytics] {ticker}: valid_points={len(ticker_series[ticker].dropna())}")
+        print(f"prices.shape: {combined_df.shape}")
+        return combined_df
+        
     # Check individual ticker cache
     for ticker in normalized_tickers:
         cache_key = f"yf_price_single_{ticker}_{period}"
-        cached_series = cache_manager.get(cache_key)
-        if cached_series is not None and not cached_series.empty and not cached_series.isna().all():
+        try:
+            cached_series = cache_manager.get(cache_key)
+        except Exception as e:
+            logger.warning(f"[Cache Recovery] Exception reading cache file for {ticker}: {e}")
+            cached_series = None
+            
+        if is_valid_series(cached_series):
             if getattr(cached_series.index, "tz", None) is not None:
                 cached_series.index = cached_series.index.tz_localize(None)
             if hasattr(cached_series.index, "normalize"):
@@ -45,58 +97,29 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
             logger.info(f"[Analytics] Cache hit for single ticker: {ticker}")
             ticker_series[ticker] = cached_series
         else:
-            logger.info(f"[Analytics] Cache miss or invalid/NaN cache for single ticker: {ticker}")
-            if cached_series is not None:
-                try:
-                    import os
-                    cache_path = cache_manager._get_cache_path(cache_key)
-                    if os.path.exists(cache_path):
-                        os.remove(cache_path)
-                        logger.info(f"[Analytics] Deleted corrupted NaN cache file for: {ticker}")
-                except Exception as ex:
-                    logger.warning(f"[Analytics] Failed to delete corrupted cache: {ex}")
+            logger.warning(f"[Cache Recovery] Invalid cache detected for {ticker}")
+            try:
+                import os as local_os
+                path = cache_manager._get_cache_path(cache_key)
+                if local_os.path.exists(path):
+                    local_os.remove(path)
+                    logger.warning("[Cache Recovery] Deleted corrupted cache")
+            except Exception as del_err:
+                logger.error(f"[Cache Recovery] Failed to delete cache file: {del_err}")
+            
             tickers_to_download.append(ticker)
             
     if tickers_to_download:
-        logger.info(f"[Analytics] Downloading data from yfinance for: {tickers_to_download}")
+        logger.info(f"[Analytics] Downloading batch data from yfinance for: {tickers_to_download}")
+        failed_to_retry = []
         try:
-            if len(tickers_to_download) == 1:
-                t = tickers_to_download[0]
-                data = yf.download(t, period=period, auto_adjust=True, progress=False)
-                if data.empty:
-                    raise ValueError(f"No price data returned from yfinance for: {t}")
-                
-                # Extract Close prices
-                if "Close" in data:
-                    close_col = data["Close"]
-                elif "close" in data:
-                    close_col = data["close"]
-                else:
-                    close_col = data
-                
-                if isinstance(close_col, pd.DataFrame):
-                    # Multi-index or dataframe cleanup
-                    if t in close_col.columns:
-                        close_col = close_col[t]
-                    else:
-                        close_col = close_col.iloc[:, 0]
-                
-                if getattr(close_col.index, "tz", None) is not None:
-                    close_col.index = close_col.index.tz_localize(None)
-                if hasattr(close_col.index, "normalize"):
-                    close_col.index = close_col.index.normalize()
-                series = close_col.ffill().bfill()
-                
-                if series.isna().all():
-                    raise ValueError(f"Downloaded yfinance data for {t} is entirely NaN.")
-                
-                ticker_series[t] = series
-                cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
+            # Batch download using threads=True
+            data = yf.download(tickers_to_download, period=period, auto_adjust=True, progress=False, threads=True)
+            
+            if data.empty:
+                logger.warning(f"[Analytics] Batch download returned empty DataFrame. All batch tickers will be retried individually.")
+                failed_to_retry = list(tickers_to_download)
             else:
-                data = yf.download(tickers_to_download, period=period, auto_adjust=True, progress=False)
-                if data.empty:
-                    raise ValueError(f"No price data returned from yfinance for: {tickers_to_download}")
-                
                 # Extract Close prices
                 if "Close" in data:
                     close_df = data["Close"]
@@ -110,40 +133,73 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
                 if hasattr(close_df.index, "normalize"):
                     close_df.index = close_df.index.normalize()
                 
-                # Check structure
-                if isinstance(close_df, pd.Series):
-                    # Only one column returned in series form
-                    t = tickers_to_download[0]
-                    series = close_df.ffill().bfill()
-                    if series.isna().all():
-                        raise ValueError(f"Downloaded yfinance data for {t} is entirely NaN.")
-                    ticker_series[t] = series
-                    cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
-                else:
-                    for t in tickers_to_download:
+                # Check structure and extract each ticker's series
+                for t in tickers_to_download:
+                    series = None
+                    if isinstance(close_df, pd.Series):
+                        if len(tickers_to_download) == 1 and tickers_to_download[0] == t:
+                            series = close_df
+                    elif isinstance(close_df, pd.DataFrame):
                         if t in close_df.columns:
-                            series = close_df[t].ffill().bfill()
-                            if series.isna().all():
-                                raise ValueError(f"Downloaded yfinance data for {t} is entirely NaN.")
-                            ticker_series[t] = series
-                            cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
+                            series = close_df[t]
                         else:
-                            # Try to match case-insensitively or search
                             matched_col = next((col for col in close_df.columns if col.upper().strip() == t.upper().strip()), None)
                             if matched_col:
-                                series = close_df[matched_col].ffill().bfill()
-                                if series.isna().all():
-                                    raise ValueError(f"Downloaded yfinance data for {matched_col} is entirely NaN.")
-                                ticker_series[t] = series
-                                cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
-                            else:
-                                logger.warning(f"[Analytics] Ticker {t} not found in yfinance download columns {close_df.columns}")
-        except Exception as e:
-            logger.error(f"[Analytics] Error downloading from yfinance: {e}")
-            raise e
+                                series = close_df[matched_col]
+                    
+                    if series is not None:
+                        series = series.ffill().bfill()
+                        if is_valid_series(series):
+                            ticker_series[t] = series
+                            cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
+                            continue
+                    
+                    # If extraction failed or returned invalid series, mark for retry
+                    failed_to_retry.append(t)
+        except Exception as batch_err:
+            logger.warning(f"[Analytics] Batch download failed with error: {batch_err}. Retrying all tickers individually.")
+            failed_to_retry = list(tickers_to_download)
+            
+        # Retry failed tickers individually
+        if failed_to_retry:
+            logger.info(f"[Analytics] Retrying {len(failed_to_retry)} failed tickers individually: {failed_to_retry}")
+            for t in failed_to_retry:
+                try:
+                    single_data = yf.download(t, period=period, auto_adjust=True, progress=False)
+                    if single_data.empty:
+                        logger.warning(f"[Analytics Retry Failed] Individual download for {t} returned empty data.")
+                        continue
+                    
+                    if "Close" in single_data:
+                        close_col = single_data["Close"]
+                    elif "close" in single_data:
+                        close_col = single_data["close"]
+                    else:
+                        close_col = single_data
+                    
+                    if isinstance(close_col, pd.DataFrame):
+                        if t in close_col.columns:
+                            close_col = close_col[t]
+                        else:
+                            close_col = close_col.iloc[:, 0]
+                            
+                    if getattr(close_col.index, "tz", None) is not None:
+                        close_col.index = close_col.index.tz_localize(None)
+                    if hasattr(close_col.index, "normalize"):
+                        close_col.index = close_col.index.normalize()
+                        
+                    series = close_col.ffill().bfill()
+                    if is_valid_series(series):
+                        logger.info(f"[Analytics] Retry success for ticker: {t}")
+                        ticker_series[t] = series
+                        cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
+                    else:
+                        logger.warning(f"[Analytics Retry Failed] Individual download for {t} is invalid or entirely NaN.")
+                except Exception as retry_err:
+                    logger.warning(f"[Analytics Retry Failed] Error downloading {t} individually: {retry_err}")
 
-    # Build aligned DataFrame of all requested tickers
-    for t in ticker_series:
+    # Build aligned DataFrame of all successfully retrieved tickers
+    for t in list(ticker_series.keys()):
         s = ticker_series[t]
         if getattr(s.index, "tz", None) is not None:
             s.index = s.index.tz_localize(None)
@@ -151,12 +207,13 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
             s.index = s.index.normalize()
             
     combined_df = pd.DataFrame(ticker_series)
-    combined_df = combined_df.ffill().bfill()
-    if getattr(combined_df.index, "tz", None) is not None:
-        combined_df.index = combined_df.index.tz_localize(None)
-    if hasattr(combined_df.index, "normalize"):
-        combined_df.index = combined_df.index.normalize()
-        
+    if not combined_df.empty:
+        combined_df = combined_df.ffill().bfill()
+        if getattr(combined_df.index, "tz", None) is not None:
+            combined_df.index = combined_df.index.tz_localize(None)
+        if hasattr(combined_df.index, "normalize"):
+            combined_df.index = combined_df.index.normalize()
+            
     logger.info(f"[Analytics] Combined prices DataFrame shape: {combined_df.shape}")
     print(f"prices.shape: {combined_df.shape}")
     return combined_df

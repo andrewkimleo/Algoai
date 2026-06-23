@@ -61,73 +61,79 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "market_download",
-            "reason": f"ticker data unavailable: {str(e)}"
+            "reason": f"ticker data download exception: {str(e)}"
         }
 
-    if prices_df is None or prices_df.empty:
-        logger.error("[Market Download Failed] Historical price dataframe is empty.")
-        return {
-            "status": "error",
-            "stage": "market_download",
-            "reason": "ticker data unavailable: returned empty prices dataframe"
-        }
-
-    # Log/trace downloaded prices info for every ticker
-    logger.info(f"[Market Download] Historical price dataframe shape: {prices_df.shape}")
-    logger.info(f"[Market Download] Historical price dataframe columns: {list(prices_df.columns)}")
+    # Determine valid and failed tickers
+    valid_tickers = []
+    failed_tickers = []
     
+    # We import TICKER_ALIASES to match exactly
+    from .portfolio_returns import TICKER_ALIASES
+    
+    # Check each ticker from the weights keys
     for ticker in tickers:
         t_norm = ticker.upper().strip()
+        if t_norm in TICKER_ALIASES:
+            t_norm = TICKER_ALIASES[t_norm]
         if not t_norm.endswith(".NS") and not t_norm.endswith(".BO") and not t_norm.startswith("^"):
             t_norm += ".NS"
+        if t_norm in TICKER_ALIASES:
+            t_norm = TICKER_ALIASES[t_norm]
             
-        if t_norm in prices_df.columns:
+        if prices_df is not None and t_norm in prices_df.columns:
             series = prices_df[t_norm].dropna()
-            if not series.empty:
+            # MIN_POINTS is 30
+            if len(series) >= 30:
+                valid_tickers.append(t_norm)
                 logger.info(f"[Market Download Details] Ticker: {t_norm} | Rows: {len(series)} | First Date: {series.index[0].date()} | Last Date: {series.index[-1].date()}")
-                print(f"Ticker: {t_norm} | rows: {len(series)}")
-            else:
-                logger.error(f"[Market Download Failed] Ticker: {t_norm} has all NaN data.")
-                return {
-                    "status": "error",
-                    "stage": "market_download",
-                    "reason": f"ticker data empty or all NaN for {t_norm}"
-                }
-        else:
-            logger.error(f"[Market Download Failed] Ticker: {t_norm} column missing from prices dataframe.")
-            return {
-                "status": "error",
-                "stage": "market_download",
-                "reason": f"ticker data unavailable for {t_norm}"
-            }
+                continue
+        failed_tickers.append(t_norm)
+        logger.warning(f"[Market Download Failed] Ticker: {t_norm} has missing/all-NaN/insufficient price data.")
 
-    # Check for all-NaN columns or NaN values
-    all_nan_cols = [col for col in prices_df.columns if prices_df[col].isna().all()]
-    if all_nan_cols:
-        logger.error(f"[Market Download Failed] The following columns contain only NaN values: {all_nan_cols}")
+    # Calculate threshold
+    MIN_VALID_TICKERS = max(5, int(len(tickers) * 0.25))
+    
+    logger.info(f"[Analytics Orchestrator] Requested: {len(tickers)} | Valid: {len(valid_tickers)} | Failed: {len(failed_tickers)} | Required: {MIN_VALID_TICKERS}")
+    
+    if len(valid_tickers) < MIN_VALID_TICKERS:
+        logger.error(f"[Market Download Failed] Insufficient valid tickers. Valid: {len(valid_tickers)} | Required: {MIN_VALID_TICKERS}")
         return {
             "status": "error",
             "stage": "market_download",
-            "reason": f"ticker data unavailable: columns contain only NaNs: {all_nan_cols}"
+            "reason": "insufficient valid tickers",
+            "valid_count": len(valid_tickers),
+            "required_count": MIN_VALID_TICKERS
         }
 
-    # STEP 4: CHECK COLUMN MATCHING
-    normalized_weights = {}
+    # STEP 4: CHECK COLUMN MATCHING AND WEIGHT RE-NORMALIZATION
+    # Filter the original weights dictionary to only keep valid tickers
+    filtered_weights = {}
     for ticker, wt in weights.items():
         t_upper = ticker.upper().strip()
+        if t_upper in TICKER_ALIASES:
+            t_upper = TICKER_ALIASES[t_upper]
         if not t_upper.endswith(".NS") and not t_upper.endswith(".BO") and not t_upper.startswith("^"):
             t_upper += ".NS"
-        normalized_weights[t_upper] = wt
-        
-    mismatched_keys = [k for k in normalized_weights.keys() if k not in prices_df.columns]
-    if mismatched_keys:
-        logger.error(f"[Validation Failed] DataFrame columns do not match allocation keys. Missing: {mismatched_keys}")
+        if t_upper in TICKER_ALIASES:
+            t_upper = TICKER_ALIASES[t_upper]
+            
+        if t_upper in valid_tickers:
+            filtered_weights[t_upper] = wt
+
+    remaining_sum = sum(filtered_weights.values())
+    if remaining_sum > 0:
+        normalized_weights = {k: v / remaining_sum for k, v in filtered_weights.items()}
+        logger.info(f"[Validation] Re-normalized weights (sum=1.0): {normalized_weights}")
+    else:
+        logger.error("[Validation Failed] Aggregate weight of valid tickers is zero.")
         return {
             "status": "error",
-            "stage": "column_matching",
-            "reason": f"allocation keys mismatch downloaded dataframe columns: missing {mismatched_keys}"
+            "stage": "market_download",
+            "reason": "aggregate weight of valid tickers is zero",
+            "valid_count": len(valid_tickers),
+            "required_count": MIN_VALID_TICKERS
         }
-    logger.info(f"[Validation] Weight vector used: {normalized_weights}")
 
     # STEP 3: Validate Benchmark download
     try:
@@ -283,12 +289,23 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         "asset_count": len(tickers)
     }
     
+    # Calculate success rate
+    success_rate = round(len(valid_tickers) / len(tickers), 2) if tickers else 0.0
+    diagnostics = {
+        "valid_tickers": valid_tickers,
+        "failed_tickers": failed_tickers,
+        "failed_count": len(failed_tickers),
+        "success_rate": success_rate
+    }
+    logger.info(f"[Analytics Orchestrator] Completed: Requested={len(tickers)}, Valid={len(valid_tickers)}, Failed={len(failed_tickers)}, SuccessRate={success_rate}")
+    
     return {
         "metadata": metadata,
         "metrics": metrics,
         "equity_curve": equity_curve,
         "drawdown_curve": drawdown_curve,
-        "benchmark_curve": benchmark_curve
+        "benchmark_curve": benchmark_curve,
+        "diagnostics": diagnostics
     }
 
 def compute_portfolio_analytics(weights: dict[str, float], period: str = "3y", benchmark_symbol: str = "^NSEI") -> dict:

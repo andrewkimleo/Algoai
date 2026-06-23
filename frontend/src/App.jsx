@@ -1081,7 +1081,7 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
     );
   }
 
-  const { metadata, metrics, equity_curve, drawdown_curve, benchmark_curve } = analyticsData;
+  const { metadata, metrics, equity_curve, drawdown_curve, benchmark_curve, diagnostics } = analyticsData;
   const isOutperforming = metrics.excess_return >= 0;
 
   return (
@@ -1103,6 +1103,33 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
           <span className="status-badge" style={{ fontSize: '0.68rem', padding: '0.2rem 0.5rem' }}>
             Assets: <strong>{metadata.asset_count}</strong>
           </span>
+          {diagnostics && (
+            <span className="status-badge" style={{ 
+              fontSize: '0.68rem', 
+              padding: '0.2rem 0.5rem',
+              color: diagnostics.failed_count > 0 ? '#f59e0b' : '#10b981',
+              backgroundColor: diagnostics.failed_count > 0 ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+              borderColor: diagnostics.failed_count > 0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+              borderStyle: 'solid',
+              borderWidth: '1px',
+              borderRadius: '4px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem'
+            }}>
+              {diagnostics.failed_count > 0 ? (
+                <>
+                  <span>⚠</span>
+                  <span>{diagnostics.valid_tickers?.length} / {metadata.asset_count} loaded</span>
+                </>
+              ) : (
+                <>
+                  <span>✓</span>
+                  <span>{diagnostics.valid_tickers?.length} / {metadata.asset_count} loaded</span>
+                </>
+              )}
+            </span>
+          )}
           <span className="status-badge text-muted" style={{ fontSize: '0.6rem', padding: '0.2rem 0.5rem' }}>
             Updated: {new Date(metadata.calculation_timestamp).toLocaleTimeString()}
           </span>

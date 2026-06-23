@@ -418,12 +418,13 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
             sys.path.remove(backend_path)
             sys.path.insert(0, backend_path)
 
+        backend_path_normalized = backend_path.replace('\\', '/')
         if 'analytics' in sys.modules:
             analytics_mod = sys.modules['analytics']
             is_our_analytics = False
             if hasattr(analytics_mod, '__file__') and analytics_mod.__file__:
-                file_path = analytics_mod.__file__.replace('\\', '/')
-                if 'backend/analytics' in file_path or file_path.endswith('analytics/__init__.py'):
+                file_path = os.path.abspath(analytics_mod.__file__).replace('\\', '/')
+                if file_path.startswith(backend_path_normalized) and 'analytics' in file_path:
                     is_our_analytics = True
             if not is_our_analytics:
                 logger.info(f"[Analytics Import Guard] Removing non-local analytics module: {getattr(analytics_mod, '__file__', None)}")
