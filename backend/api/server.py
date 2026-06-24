@@ -357,6 +357,37 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
             with open(log_file, "a") as df_log:
                 df_log.write(warn_msg)
 
+    # Self-healing lookup: if picks/weights are missing, find them in the message history
+    for alloc in allocations:
+        picks = alloc.get("picks", [])
+        wt_list = alloc.get("weights", [])
+        if not picks or not wt_list:
+            strategy_name = alloc.get("strategy")
+            logger.info(f"[Self-Healing] Missing picks/weights for strategy '{strategy_name}'. Querying message history...")
+            
+            def normalize_strat(s: str) -> str:
+                if not s:
+                    return ""
+                s = s.lower().strip()
+                for suffix in ["_agent", "_strategy", " agent", " strategy", "agent", "strategy"]:
+                    if s.endswith(suffix):
+                        s = s[:-len(suffix)]
+                return s.strip().replace("_", "").replace(" ", "")
+                
+            target_strat = normalize_strat(strategy_name)
+            for msg in reversed(messages):
+                if msg.get("message_type") in ["proposal", "revision"]:
+                    payload = msg.get("payload") or {}
+                    msg_strat = normalize_strat(payload.get("strategy") or msg.get("sender"))
+                    if msg_strat == target_strat:
+                        recovered_picks = payload.get("picks", [])
+                        recovered_weights = payload.get("weights", [])
+                        if recovered_picks and recovered_weights:
+                            alloc["picks"] = recovered_picks
+                            alloc["weights"] = recovered_weights
+                            logger.info(f"[Self-Healing] Recovered picks={recovered_picks} and weights={recovered_weights} for strategy '{strategy_name}' from message ID '{msg.get('message_id')}'")
+                            break
+
     # Calculate net stock-level weights from strategy weights
     weights = {}
     for alloc in allocations:
@@ -379,13 +410,15 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
         return {
             "status": "error",
             "stage": "portfolio_input_validation",
-            "reason": "No strategy allocations found in the final verdict message."
+            "reason": "No strategy allocations found in the final verdict message.",
+            "message": "No strategy allocations found in the final verdict message."
         }
     if not weights:
         return {
             "status": "error",
             "stage": "portfolio_input_validation",
-            "reason": "Aggregate weight sum is zero. Cannot compute returns."
+            "reason": "Aggregate weight sum is zero. Cannot compute returns.",
+            "message": "Aggregate weight sum is zero. Cannot compute returns."
         }
 
     # Normalize weights to sum to 1.0 (eliminates rounding discrepancies)
@@ -397,7 +430,8 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
         return {
             "status": "error",
             "stage": "portfolio_input_validation",
-            "reason": "Aggregate weight sum is zero. Cannot compute returns."
+            "reason": "Aggregate weight sum is zero. Cannot compute returns.",
+            "message": "Aggregate weight sum is zero. Cannot compute returns."
         }
 
     try:
@@ -438,6 +472,11 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
         # STEP 8: Structured Error Reporting
         if isinstance(analytics_result, dict) and analytics_result.get("status") == "error":
             logger.warning(f"[Analytics API] Analytics returned error response: {analytics_result}")
+            # Ensure error response contains both message and reason
+            if "reason" not in analytics_result and "message" in analytics_result:
+                analytics_result["reason"] = analytics_result["message"]
+            elif "message" not in analytics_result and "reason" in analytics_result:
+                analytics_result["message"] = analytics_result["reason"]
             return analytics_result
             
         # Guard against empty metrics or curves to return standard error message
@@ -449,7 +488,8 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
             return {
                 "status": "error",
                 "stage": "metrics_generation",
-                "reason": "Analytics generated empty metrics or equity curve series"
+                "reason": "Analytics generated empty metrics or equity curve series",
+                "message": "Analytics generated empty metrics or equity curve series"
             }
             
         return analytics_result
@@ -458,7 +498,8 @@ async def get_portfolio_analytics(session_id: Optional[str] = None):
         return {
             "status": "error",
             "stage": "metrics_calculation",
-            "reason": str(e)
+            "reason": str(e),
+            "message": str(e)
         }
 
 

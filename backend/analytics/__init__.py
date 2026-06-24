@@ -27,7 +27,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "portfolio_input_validation",
-            "reason": "Portfolio weights dictionary is empty."
+            "reason": "Portfolio weights dictionary is empty.",
+            "message": "Portfolio weights dictionary is empty."
         }
 
     tickers = list(weights.keys())
@@ -40,7 +41,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
             return {
                 "status": "error",
                 "stage": "portfolio_input_validation",
-                "reason": f"Weight for asset {ticker} is zero or negative: {wt}"
+                "reason": f"Weight for asset {ticker} is zero or negative: {wt}",
+                "message": f"Weight for asset {ticker} is zero or negative: {wt}"
             }
 
     # STEP 2 (Ticker validation): Validate ticker symbols are valid
@@ -50,7 +52,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "portfolio_input_validation",
-            "reason": f"Ticker symbols are invalid: {invalid_tickers}"
+            "reason": f"Ticker symbols are invalid: {invalid_tickers}",
+            "message": f"Ticker symbols are invalid: {invalid_tickers}"
         }
 
     # STEP 3: VALIDATE MARKET DATA DOWNLOAD
@@ -61,7 +64,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "market_download",
-            "reason": f"ticker data download exception: {str(e)}"
+            "reason": f"ticker data download exception: {str(e)}",
+            "message": f"ticker data download exception: {str(e)}"
         }
 
     # Determine valid and failed tickers
@@ -160,6 +164,7 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
             "status": "error",
             "stage": "market_download",
             "reason": "insufficient valid tickers",
+            "message": "insufficient valid tickers",
             "valid_count": len(valid_tickers),
             "required_count": MIN_VALID_TICKERS
         }
@@ -189,6 +194,7 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
             "status": "error",
             "stage": "market_download",
             "reason": "aggregate weight of valid tickers is zero",
+            "message": "aggregate weight of valid tickers is zero",
             "valid_count": len(valid_tickers),
             "required_count": MIN_VALID_TICKERS
         }
@@ -201,7 +207,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "benchmark_download",
-            "reason": f"benchmark data unavailable: {str(e)}"
+            "reason": f"benchmark data unavailable: {str(e)}",
+            "message": f"benchmark data unavailable: {str(e)}"
         }
         
     if bench_returns is None or bench_returns.empty:
@@ -209,7 +216,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "benchmark_download",
-            "reason": "benchmark data unavailable: empty benchmark returns"
+            "reason": "benchmark data unavailable: empty benchmark returns",
+            "message": "benchmark data unavailable: empty benchmark returns"
         }
 
     # Normalize indexes timezone & time components
@@ -240,7 +248,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "date_alignment",
-            "reason": "returns dataframe empty after date alignment and dropna"
+            "reason": "returns dataframe empty after date alignment and dropna",
+            "message": "returns dataframe empty after date alignment and dropna"
         }
 
     # Calculate portfolio returns
@@ -255,7 +264,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "portfolio_returns",
-            "reason": "portfolio returns series empty after weight calculation"
+            "reason": "portfolio returns series empty after weight calculation",
+            "message": "portfolio returns series empty after weight calculation"
         }
         
     logger.info(f"[Portfolio Returns] Head:\n{port_returns.head(5)}")
@@ -270,7 +280,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         return {
             "status": "error",
             "stage": "lookback_validation",
-            "reason": f"benchmark index has insufficient history: {bench_obs} observations"
+            "reason": f"benchmark index has insufficient history: {bench_obs} observations",
+            "message": f"benchmark index has insufficient history: {bench_obs} observations"
         }
 
     # 4. Generate compounded Equity Curves (100,000 Initial Capital)
@@ -300,6 +311,8 @@ def compute_strategy_analytics(weights: dict[str, float], period: str = "3y", be
         logger.warning("[Analytics Orchestrator] Insufficient overlap or computation failure.")
         return {
             "status": "error",
+            "stage": "lookback_validation",
+            "reason": "Insufficient historical data",
             "message": "Insufficient historical data"
         }
     

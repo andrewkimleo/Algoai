@@ -27,6 +27,15 @@ from tools.correlation_filter import prune_correlated_candidates
 
 logger = logging.getLogger(__name__)
 
+def normalize_strat(s: str) -> str:
+    if not s:
+        return ""
+    s = s.lower().strip()
+    for suffix in ["_agent", "_strategy", " agent", " strategy", "agent", "strategy"]:
+        if s.endswith(suffix):
+            s = s[:-len(suffix)]
+    return s.strip().replace("_", "").replace(" ", "")
+
 # Pydantic Schemas for Strict JSON Output
 class StrategyAllocationModel(BaseModel):
     strategy: str = Field(description="Name of the strategy (momentum, mean_reversion, sentiment)")
@@ -148,8 +157,10 @@ class PortfolioArbiter:
             # Map Pydantic validation outputs back to domain models
             final_allocs = []
             for item in parsed_data.allocations:
-                # Find matching proposal details
-                prop = next((p for p in approved_proposals if p.get("strategy") == item.strategy), {})
+                # Find matching proposal details with robust normalization
+                prop = next((p for p in approved_proposals if normalize_strat(p.get("strategy")) == normalize_strat(item.strategy)), {})
+                if not prop:
+                    prop = next((p for p in approved_proposals if normalize_strat(p.get("sender")) == normalize_strat(item.strategy)), {})
                 
                 # Diagnostic check: Is there a mismatch?
                 import os

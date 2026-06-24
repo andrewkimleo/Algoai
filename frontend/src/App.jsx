@@ -1519,7 +1519,7 @@ export default function App() {
         }
         const data = await response.json();
         if (data && data.status === 'error') {
-          throw new Error(data.message || "Insufficient historical data");
+          throw new Error(data.reason || data.message || "Insufficient historical data");
         }
         setAnalyticsData(data);
       } catch (err) {
