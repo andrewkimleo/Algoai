@@ -83,34 +83,69 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
     # Check individual ticker cache
     for ticker in normalized_tickers:
         cache_key = f"yf_price_single_{ticker}_{period}"
+        cache_path = cache_manager._get_cache_path(cache_key)
         try:
             cached_series = cache_manager.get(cache_key)
         except Exception as e:
             logger.warning(f"[Cache Recovery] Exception reading cache file for {ticker}: {e}")
             cached_series = None
             
-        if is_valid_series(cached_series):
-            if getattr(cached_series.index, "tz", None) is not None:
-                cached_series.index = cached_series.index.tz_localize(None)
-            if hasattr(cached_series.index, "normalize"):
-                cached_series.index = cached_series.index.normalize()
-            logger.info(f"[Analytics] Cache hit for single ticker: {ticker}")
-            ticker_series[ticker] = cached_series
-        else:
-            logger.warning(f"[Cache Recovery] Invalid cache detected for {ticker}")
-            try:
-                import os as local_os
-                path = cache_manager._get_cache_path(cache_key)
-                if local_os.path.exists(path):
-                    local_os.remove(path)
-                    logger.warning("[Cache Recovery] Deleted corrupted cache")
-            except Exception as del_err:
-                logger.error(f"[Cache Recovery] Failed to delete cache file: {del_err}")
+        if cached_series is not None:
+            # Get file creation/modification timestamp
+            import os
+            from datetime import datetime
+            created_timestamp = "N/A"
+            if os.path.exists(cache_path):
+                try:
+                    mtime = os.path.getmtime(cache_path)
+                    created_timestamp = datetime.fromtimestamp(mtime).isoformat()
+                except Exception:
+                    pass
+            logger.info(
+                f"[Cache Investigation] Cache hit details for {ticker}: "
+                f"cache_file={cache_path} "
+                f"created_timestamp={created_timestamp} "
+                f"row_count={len(cached_series)}"
+            )
             
+            # If the cached series is valid but contains fewer than 252 observations
+            if len(cached_series.dropna()) < 252:
+                logger.warning(f"[Cache Investigation] Cached data for {ticker} has only {len(cached_series.dropna())} non-NaN observations (fewer than 252 required). Deleting cache and forcing redownload.")
+                try:
+                    if os.path.exists(cache_path):
+                        os.remove(cache_path)
+                        logger.info(f"[Cache Investigation] Deleted cache file: {cache_path}")
+                except Exception as del_err:
+                    logger.error(f"[Cache Investigation] Failed to delete cache file: {del_err}")
+                tickers_to_download.append(ticker)
+            else:
+                if getattr(cached_series.index, "tz", None) is not None:
+                    cached_series.index = cached_series.index.tz_localize(None)
+                if hasattr(cached_series.index, "normalize"):
+                    cached_series.index = cached_series.index.normalize()
+                logger.info(f"[Analytics] Cache hit for single ticker: {ticker}")
+                
+                # Log instrumentation after cache retrieval
+                logger.info(
+                    f"[{ticker}] "
+                    f"cache_hit=True "
+                    f"period={period} "
+                    f"cache_file_path={cache_path} "
+                    f"rows={len(cached_series)} "
+                    f"start={cached_series.index.min()} "
+                    f"end={cached_series.index.max()} "
+                    f"non_nan={cached_series.dropna().shape[0]}"
+                )
+                ticker_series[ticker] = cached_series
+        else:
+            logger.warning(f"[Cache Recovery] Cache miss or invalid cache detected for {ticker}")
             tickers_to_download.append(ticker)
             
     if tickers_to_download:
         logger.info(f"[Analytics] Downloading batch data from yfinance for: {tickers_to_download}")
+        for t in tickers_to_download:
+            logger.info(f"Downloading ticker: {t}")
+            
         failed_to_retry = []
         try:
             # Batch download using threads=True
@@ -152,6 +187,18 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
                         if is_valid_series(series):
                             ticker_series[t] = series
                             cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
+                            
+                            # Log instrumentation after download
+                            logger.info(
+                                f"[{t}] "
+                                f"cache_hit=False "
+                                f"period={period} "
+                                f"cache_file_path={cache_manager._get_cache_path(f'yf_price_single_{t}_{period}')} "
+                                f"rows={len(series)} "
+                                f"start={series.index.min()} "
+                                f"end={series.index.max()} "
+                                f"non_nan={series.dropna().shape[0]}"
+                            )
                             continue
                     
                     # If extraction failed or returned invalid series, mark for retry
@@ -165,6 +212,7 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
             logger.info(f"[Analytics] Retrying {len(failed_to_retry)} failed tickers individually: {failed_to_retry}")
             for t in failed_to_retry:
                 try:
+                    logger.info(f"Downloading ticker: {t}")
                     single_data = yf.download(t, period=period, auto_adjust=True, progress=False)
                     if single_data.empty:
                         logger.warning(f"[Analytics Retry Failed] Individual download for {t} returned empty data.")
@@ -193,6 +241,18 @@ def fetch_historical_prices(tickers: list[str], period: str = "3y") -> pd.DataFr
                         logger.info(f"[Analytics] Retry success for ticker: {t}")
                         ticker_series[t] = series
                         cache_manager.set(f"yf_price_single_{t}_{period}", series, expiry_seconds=86400)
+                        
+                        # Log instrumentation after retry download
+                        logger.info(
+                            f"[{t}] "
+                            f"cache_hit=False "
+                            f"period={period} "
+                            f"cache_file_path={cache_manager._get_cache_path(f'yf_price_single_{t}_{period}')} "
+                            f"rows={len(series)} "
+                            f"start={series.index.min()} "
+                            f"end={series.index.max()} "
+                            f"non_nan={series.dropna().shape[0]}"
+                        )
                     else:
                         logger.warning(f"[Analytics Retry Failed] Individual download for {t} is invalid or entirely NaN.")
                 except Exception as retry_err:

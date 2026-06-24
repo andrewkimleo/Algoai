@@ -206,15 +206,15 @@ function TickerSelect({ selected, onChange }) {
 
   return (
     <div className="ticker-select-container" ref={containerRef}>
-      <div 
+      <div
         className="ticker-select-input-container"
         onClick={() => setIsOpen(true)}
       >
         {selected.map(ticker => (
           <span key={ticker} className="ticker-select-tag">
             {ticker}
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="ticker-select-tag-remove"
               onClick={(e) => {
                 e.stopPropagation();
@@ -263,9 +263,9 @@ function TickerSelect({ selected, onChange }) {
               </div>
             );
           })}
-          
+
           {search.trim() && !exactMatch && (
-            <div 
+            <div
               className="ticker-select-option"
               onClick={() => handleAdd(search)}
               style={{ borderTop: '1px dashed rgba(255,255,255,0.08)', color: 'var(--accent-cyan)' }}
@@ -309,8 +309,8 @@ const getConfidenceScore = (agentId, isRevised) => {
 };
 
 const getTopSignals = (agentId, isRevised, picks = []) => {
-  const stockPicks = picks && picks.length > 0 ? picks : (agentId === 'momentum_agent' ? (isRevised ? ["SBIN.NS", "TCS.NS", "HDFCBANK.NS"] : ["RELIANCE.NS", "TCS.NS", "INFY.NS"]) : 
-                      agentId === 'mean_reversion_agent' ? ["SBIN.NS", "AXISBANK.NS", "ICICIBANK.NS"] : ["WIPRO.NS", "ICICIBANK.NS", "AXISBANK.NS"]);
+  const stockPicks = picks && picks.length > 0 ? picks : (agentId === 'momentum_agent' ? (isRevised ? ["SBIN.NS", "TCS.NS", "HDFCBANK.NS"] : ["RELIANCE.NS", "TCS.NS", "INFY.NS"]) :
+    agentId === 'mean_reversion_agent' ? ["SBIN.NS", "AXISBANK.NS", "ICICIBANK.NS"] : ["WIPRO.NS", "ICICIBANK.NS", "AXISBANK.NS"]);
 
   const signals = {
     "RELIANCE.NS": "Z-Score: -1.15",
@@ -1053,7 +1053,7 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
   if (analyticsError || !analyticsData) {
     let errorTitle = "Historical Performance Not Available Yet";
     let errorDesc = "The backtest simulator will compute historical equity curves once final allocations are completed.";
-    
+
     if (analyticsError === 'no completed portfolio') {
       errorTitle = "Analytics Not Available Yet";
       errorDesc = "No completed portfolio session has been created. Run a live simulation to generate actual allocations and fetch historical analytics.";
@@ -1086,7 +1086,7 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
 
   return (
     <div className="glass-card-premium animate-fade-in" style={{ gridColumn: 'span 12', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      
+
       {/* Header with Metadata */}
       <div className="card-header-area" style={{ marginBottom: 0, paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="agent-title">
@@ -1104,8 +1104,8 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
             Assets: <strong>{metadata.asset_count}</strong>
           </span>
           {diagnostics && (
-            <span className="status-badge" style={{ 
-              fontSize: '0.68rem', 
+            <span className="status-badge" style={{
+              fontSize: '0.68rem',
               padding: '0.2rem 0.5rem',
               color: diagnostics.failed_count > 0 ? '#f59e0b' : '#10b981',
               backgroundColor: diagnostics.failed_count > 0 ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.08)',
@@ -1137,10 +1137,10 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '1.5rem' }}>
-        
+
         {/* Left Panel: Allocation + Ratios */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
+
           {/* Target Allocations */}
           <div style={{ background: 'rgba(0,0,0,0.15)', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.03)' }}>
             <h4 style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
@@ -1156,10 +1156,10 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
           </div>
 
           {/* Outperformance Summary Banner */}
-          <div style={{ 
+          <div style={{
             background: isOutperforming ? 'rgba(16,185,129,0.04)' : 'rgba(239,68,68,0.04)',
             border: isOutperforming ? '1px solid rgba(16,185,129,0.15)' : '1px solid rgba(239,68,68,0.15)',
-            padding: '0.75rem', 
+            padding: '0.75rem',
             borderRadius: '8px',
             display: 'flex',
             justifyContent: 'space-between',
@@ -1171,9 +1171,9 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                 {isOutperforming ? 'Outperforming NIFTY 50' : 'Underperforming NIFTY 50'}
               </strong>
             </div>
-            <span style={{ 
-              fontSize: '0.9rem', 
-              fontWeight: 800, 
+            <span style={{
+              fontSize: '0.9rem',
+              fontWeight: 800,
               color: isOutperforming ? 'var(--accent-emerald)' : 'var(--accent-red)',
               background: isOutperforming ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
               padding: '0.2rem 0.5rem',
@@ -1189,7 +1189,7 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
               Historical Risk & Returns Dashboard
             </h4>
             <div className="risk-panel-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-              
+
               <div className="risk-panel-card" style={{ padding: '0.5rem' }}>
                 <span className="metric-label" style={{ fontSize: '0.55rem' }}>CAGR</span>
                 <span className="metric-value text-cyan" style={{ fontSize: '0.9rem', marginTop: '0.1rem' }}>
@@ -1260,15 +1260,15 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
 
         {/* Right Panel: Interactive Chart Area */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(0,0,0,0.15)', padding: '1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.03)' }}>
-          
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {activeTab === 'equity' ? 'Equity Growth Curve (Base ₹100,000)' : 'Historical Portfolio Drawdowns (%)'}
             </span>
             <div style={{ display: 'flex', gap: '0.25rem', background: '#0a0d17', padding: '0.15rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <button 
+              <button
                 onClick={() => setActiveTab('equity')}
-                style={{ 
+                style={{
                   background: activeTab === 'equity' ? 'rgba(255,255,255,0.06)' : 'transparent',
                   border: 'none',
                   color: activeTab === 'equity' ? '#fff' : 'var(--text-secondary)',
@@ -1281,9 +1281,9 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
               >
                 Equity Curve
               </button>
-              <button 
+              <button
                 onClick={() => setActiveTab('drawdown')}
-                style={{ 
+                style={{
                   background: activeTab === 'drawdown' ? 'rgba(255,255,255,0.06)' : 'transparent',
                   border: 'none',
                   color: activeTab === 'drawdown' ? '#fff' : 'var(--text-secondary)',
@@ -1307,11 +1307,11 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={benchmark_curve} margin={{ top: 5, right: 5, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="var(--text-muted)" 
-                      fontSize={8} 
-                      tickLine={false} 
+                    <XAxis
+                      dataKey="date"
+                      stroke="var(--text-muted)"
+                      fontSize={8}
+                      tickLine={false}
                       tickFormatter={str => {
                         try {
                           const parts = str.split('-');
@@ -1321,12 +1321,12 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                         }
                       }}
                     />
-                    <YAxis 
-                      stroke="var(--text-muted)" 
-                      fontSize={8} 
-                      tickLine={false} 
+                    <YAxis
+                      stroke="var(--text-muted)"
+                      fontSize={8}
+                      tickLine={false}
                       domain={['dataMin - 5000', 'dataMax + 5000']}
-                      tickFormatter={val => '₹' + Math.round(val / 1000) + 'k'} 
+                      tickFormatter={val => '₹' + Math.round(val / 1000) + 'k'}
                     />
                     <Tooltip
                       contentStyle={{ background: '#090c15', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', fontSize: '0.7rem' }}
@@ -1334,24 +1334,24 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                       itemStyle={{ color: '#fff', padding: '0.1rem 0' }}
                       formatter={value => ['₹' + parseFloat(value).toLocaleString(undefined, { maximumFractionDigits: 0 })]}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="portfolio" 
-                      stroke="var(--accent-cyan)" 
-                      strokeWidth={2} 
-                      dot={false} 
-                      name="AlgoAI Portfolio" 
-                      activeDot={{ r: 4 }} 
+                    <Line
+                      type="monotone"
+                      dataKey="portfolio"
+                      stroke="var(--accent-cyan)"
+                      strokeWidth={2}
+                      dot={false}
+                      name="AlgoAI Portfolio"
+                      activeDot={{ r: 4 }}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="benchmark" 
-                      stroke="rgba(255,255,255,0.25)" 
-                      strokeDasharray="4 4" 
-                      strokeWidth={1.5} 
-                      dot={false} 
-                      name="NIFTY 50 Index" 
-                      activeDot={{ r: 3 }} 
+                    <Line
+                      type="monotone"
+                      dataKey="benchmark"
+                      stroke="rgba(255,255,255,0.25)"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      dot={false}
+                      name="NIFTY 50 Index"
+                      activeDot={{ r: 3 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1363,11 +1363,11 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={drawdown_curve} margin={{ top: 5, right: 5, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="var(--text-muted)" 
-                      fontSize={8} 
-                      tickLine={false} 
+                    <XAxis
+                      dataKey="date"
+                      stroke="var(--text-muted)"
+                      fontSize={8}
+                      tickLine={false}
                       tickFormatter={str => {
                         try {
                           const parts = str.split('-');
@@ -1377,11 +1377,11 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                         }
                       }}
                     />
-                    <YAxis 
-                      stroke="var(--text-muted)" 
-                      fontSize={8} 
-                      tickLine={false} 
-                      tickFormatter={val => (val * 100).toFixed(0) + '%'} 
+                    <YAxis
+                      stroke="var(--text-muted)"
+                      fontSize={8}
+                      tickLine={false}
+                      tickFormatter={val => (val * 100).toFixed(0) + '%'}
                     />
                     <Tooltip
                       contentStyle={{ background: '#090c15', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', fontSize: '0.7rem' }}
@@ -1391,18 +1391,18 @@ function PortfolioAnalyticsSection({ finalVerdictMessage, analyticsData, analyti
                     />
                     <defs>
                       <linearGradient id="drawdownGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent-red)" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="var(--accent-red)" stopOpacity={0.0}/>
+                        <stop offset="5%" stopColor="var(--accent-red)" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="var(--accent-red)" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <Area 
-                      type="monotone" 
-                      dataKey="drawdown" 
-                      stroke="var(--accent-red)" 
-                      fill="url(#drawdownGrad)" 
-                      strokeWidth={1.5} 
-                      name="Portfolio Drawdown" 
-                      activeDot={{ r: 4 }} 
+                    <Area
+                      type="monotone"
+                      dataKey="drawdown"
+                      stroke="var(--accent-red)"
+                      fill="url(#drawdownGrad)"
+                      strokeWidth={1.5}
+                      name="Portfolio Drawdown"
+                      activeDot={{ r: 4 }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -1455,7 +1455,7 @@ class ErrorBoundary extends React.Component {
 }
 
 export default function App() {
-  const [mode, setMode] = useState('demo'); // 'demo' or 'live'
+  const [mode, setMode] = useState('live'); // 'demo' or 'live'
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1); // 1x, 2x, 5x
   const [demoIndex, setDemoIndex] = useState(-1);
@@ -1493,7 +1493,7 @@ export default function App() {
     // Latch fetch trigger to prevent duplicate calls and render loops
     const fetchKey = activeSessionId || finalVerdictMessage.message_id || 'verdict-found';
     if (fetchedVerdictSessionRef.current === fetchKey) {
-      return; 
+      return;
     }
     fetchedVerdictSessionRef.current = fetchKey;
 
@@ -1501,10 +1501,10 @@ export default function App() {
       setAnalyticsLoading(true);
       setAnalyticsError(null);
       try {
-        const url = activeSessionId 
+        const url = activeSessionId
           ? `${API_BASE_URL}/api/portfolio/analytics?session_id=${activeSessionId}`
           : `${API_BASE_URL}/api/portfolio/analytics`;
-          
+
         const response = await fetch(url);
         if (!response.ok) {
           const errText = await response.text();
@@ -1512,7 +1512,7 @@ export default function App() {
           try {
             const errJson = JSON.parse(errText);
             parsedError = errJson.detail || parsedError;
-          } catch(e) {
+          } catch (e) {
             parsedError = errText || parsedError;
           }
           throw new Error(parsedError);
@@ -1630,7 +1630,7 @@ export default function App() {
     }
     setConsoleLogs([
       "[system] Session states reset.",
-      mode === 'demo'
+      mode === 'live'
         ? "[system] Ready for demo playback."
         : "[system] Ready to launch live quantitative debate session on local server."
     ]);
@@ -1775,19 +1775,18 @@ export default function App() {
           </div>
 
           <div className="status-badge">
-            <span className={`dot ${
-              mode === 'demo'
-                ? (isPlaying ? 'running' : 'completed')
-                : (isLiveRunning ? 'running' : isBackendHealthy ? 'completed' : '')
-            }`}></span>
+            <span className={`dot ${mode === 'demo'
+              ? (isPlaying ? 'running' : 'completed')
+              : (isLiveRunning ? 'running' : isBackendHealthy ? 'completed' : '')
+              }`}></span>
             <span>
               {mode === 'demo'
                 ? (isPlaying ? "PLAYING DEMO" : "MOCK READY")
-                : (isLiveRunning 
-                    ? "SSE STREAM ACTIVE" 
-                    : isBackendHealthy 
-                      ? "SERVER CONNECTED" 
-                      : "SERVER DISCONNECTED")}
+                : (isLiveRunning
+                  ? "SSE STREAM ACTIVE"
+                  : isBackendHealthy
+                    ? "SERVER CONNECTED"
+                    : "SERVER DISCONNECTED")}
             </span>
           </div>
         </div>
@@ -1908,7 +1907,7 @@ export default function App() {
             <AgentNegotiationTimeline messages={messages} />
           </div>
         </div>
-        
+
         <div className="stress-column" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div className="phase-header">
             <h3 className="phase-title"><AlertTriangle size={16} className="text-orange" /> Stress Testing Summary</h3>
@@ -1940,8 +1939,8 @@ export default function App() {
       {/* Row 4: Portfolio Analytics */}
       <div className="dashboard-row analytics-grid">
         <ErrorBoundary>
-          <PortfolioAnalyticsSection 
-            finalVerdictMessage={finalVerdictMessage} 
+          <PortfolioAnalyticsSection
+            finalVerdictMessage={finalVerdictMessage}
             analyticsData={analyticsData}
             analyticsLoading={analyticsLoading}
             analyticsError={analyticsError}

@@ -11,12 +11,14 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
+backend_dir_normalized = backend_dir.replace('\\', '/')
+
 if 'tools' in sys.modules:
     tools_mod = sys.modules['tools']
     is_our_tools = False
     if hasattr(tools_mod, '__file__') and tools_mod.__file__:
-        file_path = tools_mod.__file__.replace('\\', '/')
-        if 'backend/tools' in file_path or file_path.endswith('tools/__init__.py'):
+        file_path = os.path.abspath(tools_mod.__file__).replace('\\', '/')
+        if file_path.startswith(backend_dir_normalized) and 'tools' in file_path:
             is_our_tools = True
     if not is_our_tools:
         del sys.modules['tools']
@@ -25,8 +27,8 @@ if 'analytics' in sys.modules:
     analytics_mod = sys.modules['analytics']
     is_our_analytics = False
     if hasattr(analytics_mod, '__file__') and analytics_mod.__file__:
-        file_path = analytics_mod.__file__.replace('\\', '/')
-        if 'backend/analytics' in file_path or file_path.endswith('analytics/__init__.py'):
+        file_path = os.path.abspath(analytics_mod.__file__).replace('\\', '/')
+        if file_path.startswith(backend_dir_normalized) and 'analytics' in file_path:
             is_our_analytics = True
     if not is_our_analytics:
         for mod_name in list(sys.modules.keys()):
